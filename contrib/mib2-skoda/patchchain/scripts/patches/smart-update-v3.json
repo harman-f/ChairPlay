@@ -1,0 +1,755 @@
+{
+  "upstreamRevision": "fd7a22fa1f503695309ec9efad0e48b2d900349f",
+  "appliesAfter": [
+    "apply-live-profile-patch.ps1",
+    "manual-scaling-v1.patch",
+    "ui-consolidation-v2.json"
+  ],
+  "operations": [
+    {
+      "path": "upstream/shared/src/main/java/com/shilapi/xcertplay/airplay/AirPlayConfig.kt",
+      "before": "    val mainDisplayDisableSafeArea: Boolean = (mainDisplayCornerMasks == true),\n",
+      "after": "    val mainDisplayDisableSafeArea: Boolean = (mainDisplayCornerMasks == true),\n    /** Independent per-display iOS Smart Display Zoom, serialized in /info on reconnect. */\n    val zoomFactor: Int? = null,\n"
+    },
+    {
+      "path": "upstream/shared/src/main/java/com/shilapi/xcertplay/airplay/AirPlayInfoPlist.kt",
+      "before": "        if (display.initialUrl != null) entry[\"initialURL\"] = display.initialUrl\n        return entry",
+      "after": "        if (display.initialUrl != null) entry[\"initialURL\"] = display.initialUrl\n        display.zoomFactor?.let { entry[\"zoomFactor\"] = it }\n        return entry"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/config/ClusterProfile.kt",
+      "before": "        initialUrl = firstMapView.url, viewAreas = areas, initialViewArea = initialArea,\n",
+      "after": "        initialUrl = firstMapView.url, viewAreas = areas, initialViewArea = initialArea,\n        zoomFactor = zoomFactor,\n"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/config/DisplaySettings.kt",
+      "before": "    /**\n     * The physical size in /info, from which iOS picks its scale: millimetres as given, else from\n",
+      "after": "    /** Smart Display zoom is an optional numeric key on the MAIN display, not just the cluster. */\n    private val zoomFactor = settings.positiveSetting(\"display.zoom.factor\")?.also {\n        require(it in 25..400) { \"display.zoom.factor must be between 25 and 400\" }\n    }\n    /** A scaling ratio applied to physical mm; 100 preserves the 200 mm default width. */\n    private val physicalZoom = (settings.positiveSetting(\"display.physical.zoom\") ?: 100).also {\n        require(it in 25..400) { \"display.physical.zoom must be between 25 and 400\" }\n    }\n\n    /**\n     * The physical size in /info, from which iOS picks its scale: millimetres as given, else from\n"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/config/DisplaySettings.kt",
+      "before": "        widthMm to heightMm\n",
+      "after": "        Pair(\n            Math.round(widthMm * 100.0 / physicalZoom).toInt().coerceAtLeast(1),\n            Math.round(heightMm * 100.0 / physicalZoom).toInt().coerceAtLeast(1),\n        )\n"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/config/DisplaySettings.kt",
+      "before": "        mainDisplayDisableSafeArea = squareCorners == true && safeArea == null,\n",
+      "after": "        mainDisplayDisableSafeArea = squareCorners == true && safeArea == null,\n        zoomFactor = zoomFactor,\n"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/config/SettingsTemplate.kt",
+      "before": "    SettingBlock(\n        \"The window on this PC; the picture is scaled into it. Blank uses the display size.",
+      "after": "    SettingBlock(\n        \"The main-screen iOS zoomFactor (blank means Auto), and separate physical-mm zoom percent. Reconnect to apply.\",\n        \"display.zoom.factor\" to \"\", \"display.physical.zoom\" to \"100\",\n    ),\n    SettingBlock(\n        \"The window on this PC; the picture is scaled into it. Blank uses the display size."
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/config/EditableSettings.kt",
+      "before": "        \"display.ppi\" to Setting(Applies.RECONNECT, check = ::checkOptionalPositive),",
+      "after": "        \"display.ppi\" to Setting(Applies.RECONNECT, check = ::checkOptionalPositive),\n        \"display.zoom.factor\" to Setting(Applies.RECONNECT) { value ->\n            if (value.isBlank() || value.toIntOrNull()?.let { it in 25..400 } == true) null\n            else \"Choose Auto or a zoom percentage from 25 to 400\"\n        },\n        \"display.physical.zoom\" to Setting(Applies.RECONNECT) { value ->\n            if (value.toIntOrNull()?.let { it in 25..400 } == true) null\n            else \"Physical zoom must be from 25 to 400 percent\"\n        },"
+    },
+    {
+      "path": "webui/src/pages/AltScreenPage.tsx",
+      "before": "  const liveContent = (\n    <>\n        <Row",
+      "after": "  const profileSelected = Boolean(settings.value('altscreen.profile'))\n  const liveContent = (\n    <>\n        <Row"
+    },
+    {
+      "path": "webui/src/pages/AltScreenPage.tsx",
+      "before": "            value={state.controls?.altscreen ?? ''}\n            options={VIEWS}\n            disabled={!viewOn}\n            onChange={(content) => void backend.altscreen(content as AltscreenContent)}",
+      "after": "            value={profileSelected ? (state.controls?.altscreen === 'hud' ? 'hud' : 'vehicle') : (state.controls?.altscreen ?? '')}\n            options={profileSelected ? [['hud', 'HUD'], ['vehicle', 'Vehicle view']] : VIEWS}\n            disabled={!viewOn}\n            onChange={(content) => void backend.altscreen((profileSelected && content === 'vehicle' ? 'map' : content) as AltscreenContent)}"
+    },
+    {
+      "path": "webui/src/pages/AltScreenPage.tsx",
+      "before": "      <Group title=\"Window\" />\n      <AlwaysOnTop settings={settings} setting=\"altscreen.always.on.top\" />",
+      "after": "      <AlwaysOnTop settings={settings} setting=\"altscreen.always.on.top\" />"
+    },
+    {
+      "path": "webui/src/pages/AltScreenPage.tsx",
+      "before": "          liveContent={liveContent} windowControls={windowControls} nativeInsets={nativeInsets} />",
+      "after": "          liveContent={liveContent} windowControls={windowControls} nativeInsets={nativeInsets}\n          liveCarView={state.controls?.carView ?? null} />"
+    },
+    {
+      "path": "webui/src/pages/profileEdits.ts",
+      "before": "/** View [index]'s safe area, in its area. */",
+      "after": "/** Drop unused legacy areas and remap the actual mapped vehicle views to dense 0..N-1 area indices. */\nexport function compactAreas(profile: Profile): Profile {\n  const used = [...new Set(profile.views.map((v) => v.area).filter((a): a is number => a !== undefined))]\n  if (!used.length || used.some((i) => i < 0 || i >= profile.areas.length)) return profile\n  const mapping = new Map(used.map((old, now) => [old, now]))\n  return {\n    ...profile,\n    areas: used.map((i) => [...profile.areas[i]]),\n    views: profile.views.map((v) => v.area === undefined ? v : { ...v, area: mapping.get(v.area) }),\n  }\n}\n\n/** Assign a pre-existing declared safe area to a view, without modifying other views. */\nexport function setViewArea(profile: Profile, index: number, area: number): Profile {\n  if (!profile.areas[area] || profile.views[index].area === undefined) return profile\n  return withView(profile, index, (v) => ({ ...v, area }))\n}\n\n/** View [index]'s safe area, in its area. */"
+    },
+    {
+      "path": "webui/src/pages/ProfileViewForm.tsx",
+      "before": "setOption, setSafeArea, setViewField, setViewMap, viewUrl",
+      "after": "setOption, setSafeArea, setViewArea, setViewField, setViewMap, viewUrl"
+    },
+    {
+      "path": "webui/src/pages/ProfileViewForm.tsx",
+      "before": "      <Row label=\"Area index\"><span>{view.area} (selected view: {view.name ?? `View ${index}`})</span></Row>",
+      "after": "      <Row label=\"Area assignment\" title=\"Select the declared rectangle used by this vehicle view\">\n        <Segmented label=\"Area assignment\" value={String(view.area)}\n          options={profile.areas.map((_, i) => [String(i), `Area ${i}`] as const)}\n          onChange={(id) => change(setViewArea(profile, index, Number(id)))} />\n      </Row>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "addView, removeView, setDisplay, setZoomFactor",
+      "after": "addView, compactAreas, removeView, setDisplay, setZoomFactor"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "altScreenWindow, liveContent, windowControls, nativeInsets }: {",
+      "after": "altScreenWindow, liveContent, windowControls, nativeInsets, liveCarView }: {"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "  liveContent: ReactNode; windowControls: ReactNode; nativeInsets: ReactNode",
+      "after": "  liveContent: ReactNode; windowControls: ReactNode; nativeInsets: ReactNode; liveCarView: number | null"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              <details className=\"profile-json-editor\">\n                <summary>JSON Editor · advanced profile management</summary>\n          <Row label=\"Edit\" title=\"The profile this editor changes\">\n            <Segmented label=\"Edit\" value={editing ?? ''} options={ids} onChange={(id) => open(data, id)} />\n          </Row>\n          <Row label=\"JSON\" title=\"The whole profile, the schematic's shapes among it; leave the field to apply it\">\n            <textarea\n              aria-label=\"Profile JSON\"\n              className=\"profile-json\"\n              rows={12}\n              spellCheck={false}\n              value={text}\n              onChange={(event) => setText(event.target.value)}\n              onBlur={() => {\n                const read = parse(text)\n                setProblem(read.error ?? null)\n                if (read.profile) setDraft(read.profile)\n              }}\n            />\n          </Row>\n          <Row>\n            <button type=\"button\" className=\"btn small\" disabled={!editing} onClick={() => editing && void save(editing, text)}>\n              Save\n            </button>\n            <button type=\"button\" className=\"btn small\" onClick={() => data && open(data, editing, view)}>\n              Revert\n            </button>\n            <button\n              type=\"button\"\n              className=\"btn small\"\n              disabled={!editing || editing === chosen}\n              title={editing === chosen ? 'Choose another profile before deleting this one' : 'Delete this profile'}\n              onClick={() => editing && void save(editing, null)}\n            >\n              Delete\n            </button>\n          </Row>\n          <Row label=\"Save as\" title=\"Copy this profile under a new name: letters, digits, '.', '-' and '_'\">\n            <Field label=\"New profile name\" value={copyName} placeholder=\"my-car\" onCommit={(t) => setCopyName(t.trim())} />\n            <button type=\"button\" className=\"btn small\" disabled={!copyName} onClick={() => void save(copyName, text)}>\n              Save copy\n            </button>\n          </Row>\n              </details>\n",
+      "after": ""
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              {nativeInsets}\n",
+      "after": "              {nativeInsets}\n              <Row className=\"hint-row\"><small>Changes to the green AltScreen safe-area frame preview immediately. iOS must reconnect to negotiate changed rectangles.</small></Row>\n              <Group title=\"Advanced profile\" note=\"Editable JSON, Save, Revert and Save Copy\" />\n              <div className=\"profile-json-editor\">\n                <Group title=\"JSON Editor · advanced profile management\" />\n          <Row label=\"Edit\" title=\"The profile this editor changes\">\n            <Segmented label=\"Edit\" value={editing ?? ''} options={ids} onChange={(id) => open(data, id)} />\n          </Row>\n          <Row label=\"JSON\" title=\"The whole profile, the schematic's shapes among it; leave the field to apply it\">\n            <textarea\n              aria-label=\"Profile JSON\"\n              className=\"profile-json\"\n              rows={22}\n              spellCheck={false}\n              value={text}\n              onChange={(event) => setText(event.target.value)}\n              onBlur={() => {\n                const read = parse(text)\n                setProblem(read.error ?? null)\n                if (read.profile) setDraft(read.profile)\n              }}\n            />\n          </Row>\n          <Row>\n            <button type=\"button\" className=\"btn small\" onClick={() => {\n              const result = parse(text)\n              setProblem(result.error ?? null)\n              if (result.profile) {\n                setDraft(result.profile)\n                setText(JSON.stringify(result.profile, null, 2))\n              }\n            }}>Format JSON</button>\n            <button type=\"button\" className=\"btn small\" disabled={!editing} onClick={() => editing && void save(editing, text)}>\n              Save\n            </button>\n            <button type=\"button\" className=\"btn small\" onClick={() => data && open(data, editing, view)}>\n              Revert\n            </button>\n            <button\n              type=\"button\"\n              className=\"btn small\"\n              disabled={!editing || editing === chosen}\n              title={editing === chosen ? 'Choose another profile before deleting this one' : 'Delete this profile'}\n              onClick={() => editing && void save(editing, null)}\n            >\n              Delete\n            </button>\n          </Row>\n          <Row label=\"Save as\" title=\"Copy this profile under a new name: letters, digits, '.', '-' and '_'\">\n            <Field label=\"New profile name\" value={copyName} placeholder=\"my-car\" onCommit={(t) => setCopyName(t.trim())} />\n            <button type=\"button\" className=\"btn small\" disabled={!copyName} onClick={() => void save(copyName, text)}>\n              Save copy\n            </button>\n          </Row>\n              </div>\n"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              <Row label=\"Car view\" title=\"Select a view to edit; the Controller View button switches the live cluster independently\">\n                <Segmented label=\"Car view\" value={String(view)} options={views} onChange={(v) => setView(Number(v))} />\n              </Row>",
+      "after": "              <Row label=\"Editing view\" title=\"The view being configured; choosing it does not silently switch the live vehicle display\">\n                <Segmented label=\"Car view\" value={String(view)} options={views} onChange={(v) => setView(Number(v))} />\n              </Row>\n              <Row label=\"Active view\">\n                <span>{liveCarView === null ? 'Not connected' : `${liveCarView}: ${draft.views[liveCarView]?.name ?? 'Vehicle view'}`}</span>\n                <button type=\"button\" className=\"btn small\" disabled={liveCarView === null || !chosen || !draft}\n                  onClick={() => {\n                    if (liveCarView === null || !draft) return\n                    const steps = (view - liveCarView + draft.views.length) % draft.views.length\n                    void (async () => {\n                      for (let i = 0; i < steps; i++) {\n                        await backend.control('altscreen.view', true)\n                        await backend.control('altscreen.view', false)\n                      }\n                    })()\n                  }}>Show editing view on AltScreen</button>\n              </Row>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              <Group title=\"Safe area\" note=\"Rectangle of the selected vehicle view, with native fallback insets below\" />",
+      "after": "              <Group title=\"Safe area\" note=\"Only the three mapped vehicle views need a declared safe area\" />\n              <Row label=\"Declared areas\">\n                <span>{draft.areas.length} defined · {new Set(draft.views.map((v) => v.area).filter((a) => a !== undefined)).size} in use</span>\n                <button type=\"button\" className=\"btn small\" disabled={draft.areas.length <= new Set(draft.views.map((v) => v.area).filter((a) => a !== undefined)).size}\n                  onClick={() => change(compactAreas(draft), 'descriptor')}>Keep mapped areas only</button>\n              </Row>\n              <Row label=\"All safe areas\">\n                <svg viewBox={`0 0 ${display.width} ${display.height}`} role=\"img\"\n                  aria-label=\"All declared safe areas; highlighted rectangle belongs to editing view\"\n                  style={{ width: '100%', maxWidth: 580, background: '#101924', border: '1px solid #64748b' }}>\n                  <rect x={0} y={0} width={display.width} height={display.height} fill=\"none\" stroke=\"#94a3b8\" strokeWidth={2} />\n                  {draft.areas.map(([x, y, width, height], i) => (\n                    <g key={i}>\n                      <rect x={x} y={y} width={width} height={height}\n                        fill={draft.views[view]?.area === i ? '#149c8b55' : '#60a5fa14'}\n                        stroke={draft.views[view]?.area === i ? '#4ade80' : '#60a5fa'}\n                        strokeWidth={draft.views[view]?.area === i ? 3 : 1} />\n                      <text x={x + 6} y={y + 18} fill=\"#ffffff\" fontSize={16}>Area {i}</text>\n                    </g>\n                  ))}\n                </svg>\n              </Row>\n              <Row><small>View 3/4 retain the previous map view when they cover it. The green border in AltScreen follows the active vehicle view.</small></Row>"
+    },
+    {
+      "path": "webui/src/pages/CarPlayPage.tsx",
+      "before": "import { Group, Row, Switch } from '../shell/controls'",
+      "after": "import { Group, Row, Segmented, Switch, type Choice } from '../shell/controls'"
+    },
+    {
+      "path": "webui/src/pages/CarPlayPage.tsx",
+      "before": "const LOOK_KEYS = [",
+      "after": "const MAIN_ZOOM: readonly Choice[] = [['', 'Auto'], ['70', '70 %'], ['85', '85 %'], ['100', '100 %'], ['125', '125 %'], ['150', '150 %']]\nconst PHYSICAL_ZOOM: readonly Choice[] = [['50', '50 %'], ['70', '70 %'], ['85', '85 %'], ['100', '100 %'], ['125', '125 %'], ['150', '150 %']]\n\nconst LOOK_KEYS = ["
+    },
+    {
+      "path": "webui/src/pages/CarPlayPage.tsx",
+      "before": "  const displayFallback = settings.data?.display ?? { width: 1280, height: 720 }",
+      "after": "  const displayFallback = settings.data?.display ?? { width: 1280, height: 720 }\n  const pixelsWidth = Number(settings.value('display.width')) || displayFallback.width\n  const pixelsHeight = Number(settings.value('display.height')) || displayFallback.height\n  const ppi = Number(settings.value('display.ppi')) || 0\n  const widthEntered = Number(settings.value('display.physical.width.mm')) || 0\n  const physicalWidth = widthEntered || (ppi ? Math.round(pixelsWidth * 25.4 / ppi) : 200)\n  const physicalHeight = Number(settings.value('display.physical.height.mm')) ||\n    (ppi && !widthEntered ? Math.round(pixelsHeight * 25.4 / ppi) : Math.round(physicalWidth * pixelsHeight / pixelsWidth))\n  const physicalZoom = Number(settings.value('display.physical.zoom')) || 100\n  const effectiveWidth = Math.max(1, Math.round(physicalWidth * 100 / physicalZoom))\n  const effectiveHeight = Math.max(1, Math.round(physicalHeight * 100 / physicalZoom))"
+    },
+    {
+      "path": "webui/src/pages/CarPlayPage.tsx",
+      "before": "      <Row label=\"Frame rate\">",
+      "after": "      <Group title=\"Scaling\" note=\"Main CarPlay display · effective values sent when CarPlay reconnects\" />\n      <Row label=\"Zoom factor\" title=\"iOS Smart Display Zoom factor for main display, omitted when Auto\">\n        <Segmented label=\"Zoom factor\" value={settings.value('display.zoom.factor')} options={MAIN_ZOOM}\n          onChange={(value) => void settings.save({ 'display.zoom.factor': value })} />\n      </Row>\n      <Row label=\"Physical zoom\" title=\"Scales the main display's advertised physical millimetres independently\">\n        <Segmented label=\"Physical zoom\" columns={3} value={String(physicalZoom)} options={PHYSICAL_ZOOM}\n          onChange={(value) => void settings.save({ 'display.physical.zoom': value })} />\n      </Row>\n      <Row label=\"Effective size\"><span>{effectiveWidth} × {effectiveHeight} mm (reported to iOS)</span></Row>\n      <Row>\n        <span className=\"hint\">Main display defaults: 1280 × 720 px and 200 × 113 mm. Both scaling settings require a CarPlay reconnect.</span>\n        <button type=\"button\" className=\"btn small\" disabled={!state.canShowCarPlay} onClick={() => void backend.reconnect()}>\n          Reconnect CarPlay\n        </button>\n      </Row>\n      <Row label=\"Frame rate\">"
+    },
+    {
+      "path": "src/test/kotlin/io/github/numberonebot/chairplay/config/DisplayConfigTest.kt",
+      "before": "    // iOS picks its 2x or 3x rendering from pixels against millimetres, so ppi is the convenient knob.",
+      "after": "    @Test\n    fun `main zoom factor and physical zoom reach the real info descriptor`() {\n        val main = configWith(\"display.zoom.factor=125\", \"display.physical.zoom=125\").airPlay\n        assertEquals(125, main.main.zoomFactor)\n        assertEquals(160 to 90, main.main.widthPhysicalMm to main.main.heightPhysicalMm)\n        val displays = AirPlayInfoPlist.build(main)[\"displays\"] as List<*>\n        val entry = displays[0] as Map<*, *>\n        assertEquals(125, entry[\"zoomFactor\"])\n        assertEquals(160, entry[\"widthPhysical\"])\n        assertEquals(90, entry[\"heightPhysical\"])\n        val auto = AirPlayInfoPlist.build(configWith().airPlay)[\"displays\"] as List<*>\n        assertFalse(\"zoomFactor\" in (auto[0] as Map<*, *>))\n    }\n\n    // iOS picks its 2x or 3x rendering from pixels against millimetres, so ppi is the convenient knob."
+    },
+    {
+      "path": "src/test/kotlin/io/github/numberonebot/chairplay/config/ClusterProfileTest.kt",
+      "before": "        assertEquals(125, zoomed.displayEntry()[\"zoomFactor\"])",
+      "after": "        assertEquals(125, zoomed.displayEntry()[\"zoomFactor\"])\n        assertEquals(125, zoomed.display().zoomFactor)\n        val config = configWith(\"altscreen.enabled=true\", \"altscreen.profile=mu1440-790\")\n        val info = AirPlayInfoPlist.build(config.airPlay)\n        val alt = (info[\"displays\"] as List<*>)[1] as Map<*, *>\n        assertEquals(85, alt[\"zoomFactor\"])"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "    expect(json.closest('details')?.open).toBe(false)\n    fireEvent.click(screen.getByText('JSON Editor · advanced profile management'))\n    expect(json.closest('details')?.open).toBe(true)",
+      "after": "    expect(json.closest('details')).toBeNull()\n    expect(json.closest('.profile-json-editor')).not.toBeNull()\n    expect(within(screen.getByRole('radiogroup', { name: 'View' })).getByRole('radio', { name: 'Vehicle view' })).toBeTruthy()"
+    },
+    {
+      "path": "webui/src/pages/AltScreenPage.tsx",
+      "before": "const VIEWS: readonly Choice[] = [",
+      "after": "const PROFILE_CONTENT: readonly Choice[] = [['hud', 'HUD'], ['vehicle', 'Vehicle view']]\nconst VIEWS: readonly Choice[] = ["
+    },
+    {
+      "path": "webui/src/pages/AltScreenPage.tsx",
+      "before": "options={profileSelected ? [['hud', 'HUD'], ['vehicle', 'Vehicle view']] : VIEWS}",
+      "after": "options={profileSelected ? PROFILE_CONTENT : VIEWS}"
+    },
+    {
+      "path": "webui/src/pages/profileEdits.ts",
+      "before": "  const mapping = new Map(used.map((old, now) => [old, now]))",
+      "after": "  const mapping = new Map(used.map((old, now) => [old, now] as const))"
+    },
+    {
+      "path": "webui/src/pages/profileEdits.ts",
+      "before": "/** Drop unused legacy areas and remap the actual mapped vehicle views to dense 0..N-1 area indices. */",
+      "after": "/** Resolve the map view that provides the URL and safe area for a Controller view.\n * Overlay-only views inherit the last preceding view with a map, as the backend does.\n */\nexport function mapViewIndex(profile: Profile, controllerIndex: number): number {\n  if (profile.views.length === 0) return -1\n  const index = Math.max(0, Math.min(Math.trunc(controllerIndex), profile.views.length - 1))\n  for (let i = index; i >= 0; i--) if (profile.views[i].area !== undefined) return i\n  return profile.views.findIndex((v) => v.area !== undefined)\n}\n\n/** Drop unused legacy areas and remap the actual mapped vehicle views to dense 0..N-1 area indices. */"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "import { Group, Row, Segmented, type Choice } from '../shell/controls'",
+      "after": "import { Group, Row, Segmented, Switch, type Choice } from '../shell/controls'"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "import { addView, compactAreas, removeView, setDisplay, setZoomFactor, type Profile } from './profileEdits'",
+      "after": "import { addView, compactAreas, mapViewIndex, removeView, setDisplay, setZoomFactor, type Profile } from './profileEdits'"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "  const [view, setView] = useState(0)\n  const [problem, setProblem] = useState<string | null>(null)",
+      "after": "  const [view, setView] = useState(0)\n  const [followController, setFollowController] = useState(true)\n  const [safeAreaPreview, setSafeAreaPreview] = useState<'all' | 'active'>('all')\n  const [problem, setProblem] = useState<string | null>(null)"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "  const chosen = settings.value('altscreen.profile')\n\n  /** Opens profile",
+      "after": "  const chosen = settings.value('altscreen.profile')\n  // Never confuse the selected editor view with the map view actually controlling the URL.\n  // Views without a map use the last preceding map view (3/4 inherit 2 in the Skoda profile).\n  const activeMapIndex = draft && editing === chosen && Boolean(chosen) && liveCarView !== null\n    ? mapViewIndex(draft, liveCarView) : -1\n  const editingView = followController && activeMapIndex >= 0 ? activeMapIndex : view\n  const previewArea = (activeMapIndex >= 0 ? draft?.views[activeMapIndex]?.area : undefined)\n    ?? draft?.views[editingView]?.area\n\n  /** Opens profile"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "    setView(Math.max(0, Math.min(at, (read.profile?.views.length ?? 1) - 1)))\n  }, [])",
+      "after": "    setView(Math.max(0, Math.min(at, (read.profile?.views.length ?? 1) - 1)))\n    setFollowController(true)\n  }, [])"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "onClick={() => void reload(editing, view)}",
+      "after": "onClick={() => void reload(editing, editingView)}"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "await reload(saved === null ? chosen || null : id, saved === null || id !== editing ? 0 : view)",
+      "after": "await reload(saved === null ? chosen || null : id, saved === null || id !== editing ? 0 : editingView)"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              <Row label=\"Editing view\" title=\"The view being configured; choosing it does not silently switch the live vehicle display\">\n                <Segmented label=\"Car view\" value={String(view)} options={views} onChange={(v) => setView(Number(v))} />\n              </Row>",
+      "after": "              <Row label=\"Editing view\" title=\"Follow Controller selects the active map view automatically; manual selection edits without switching the Controller\">\n                <Segmented label=\"Car view\" value={String(editingView)} options={views}\n                  onChange={(v) => { setFollowController(false); setView(Number(v)) }} />\n                <Switch label=\"Follow Controller\" checked={followController}\n                  onChange={(checked) => {\n                    if (!checked) setView(editingView)\n                    setFollowController(checked)\n                  }} />\n              </Row>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "<span>{liveCarView === null ? 'Not connected' : `${liveCarView}: ${draft.views[liveCarView]?.name ?? 'Vehicle view'}`}</span>",
+      "after": "<span>{liveCarView === null ? 'Not connected'\n                  : `${liveCarView}: ${draft.views[liveCarView]?.name ?? 'Vehicle view'}${activeMapIndex >= 0 && activeMapIndex !== liveCarView ? ` · map settings from View ${activeMapIndex}` : ''}`}</span>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "const steps = (view - liveCarView + draft.views.length) % draft.views.length",
+      "after": "const steps = (editingView - liveCarView + draft.views.length) % draft.views.length"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "const next = removeView(draft, view)",
+      "after": "const next = removeView(draft, editingView)"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "change(next, 'descriptor')\n                      setView(Math.max(0, view - 1))",
+      "after": "change(next, 'descriptor')\n                      setFollowController(false)\n                      setView(Math.max(0, editingView - 1))"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "{draft.views[view] && (\n                <>\n                  <ProfileViewForm profile={draft} index={view} change={change} liveChange={(next) => change(next, 'url')} />",
+      "after": "{draft.views[editingView] && (\n                <>\n                  <ProfileViewForm profile={draft} index={editingView} change={change} liveChange={(next) => change(next, 'url')} />"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "<small>Scene, ETA, speed limit, compass and turn card apply immediately when editing the active profile. Navigation apps may ignore unsupported requests. Frame, safe area and native scale still require reconnect.</small>",
+      "after": "<small>{editing === chosen && activeMapIndex === editingView\n                      ? 'Live settings target the map view currently shown by the Controller.'\n                      : 'Editing a different view: saved changes take effect when that view becomes active.'}\n                      {' '}Navigation apps may ignore unsupported requests. Frame, safe area and native scale still require reconnect.</small>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              <Row label=\"All safe areas\">\n                <svg",
+      "after": "              <Row label=\"Safe-area preview\">\n                <Segmented label=\"Safe-area preview\" value={safeAreaPreview}\n                  options={[[ 'all', 'All areas' ], [ 'active', 'Active area' ]]}\n                  onChange={(next) => setSafeAreaPreview(next as 'all' | 'active')} />\n              </Row>\n              <Row label=\"All safe areas\">\n                <svg"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "{draft.areas.map(([x, y, width, height], i) => (\n                    <g key={i}>",
+      "after": "{draft.areas.map(([x, y, width, height], i) =>\n                    safeAreaPreview === 'active' && i !== previewArea ? null : (\n                    <g key={i}>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "fill={draft.views[view]?.area === i ? '#149c8b55' : '#60a5fa14'}\n                        stroke={draft.views[view]?.area === i ? '#4ade80' : '#60a5fa'}\n                        strokeWidth={draft.views[view]?.area === i ? 3 : 1} />",
+      "after": "fill={i === previewArea ? '#149c8b55' : '#60a5fa14'}\n                        stroke={i === previewArea ? '#4ade80' : '#60a5fa'}\n                        strokeWidth={i === previewArea ? 3 : 1} />"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              {draft.views[view] && (\n                <ProfileSafeAreaForm profile={draft} index={view} change={(next) => change(next, 'descriptor')} />\n              )}",
+      "after": "              {draft.views[editingView] && (\n                <ProfileSafeAreaForm profile={draft} index={editingView} change={(next) => change(next, 'descriptor')} />\n              )}"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              <Row><small>View 3/4 retain the previous map view when they cover it. The green border in AltScreen follows the active vehicle view.</small></Row>",
+      "after": "              <Row><small>Active-area preview follows the Controller; when disconnected it uses the edited view. Overlay-only Views 3/4 retain the previous map view.</small></Row>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "  // Saved, the editor stays on the view being edited rather than going back to the first.",
+      "after": "  it('follows Controller views 1 and 2 for live edits and maps overlay-only View 3 to View 2', async () => {\n    const backend = new FakeBackend()\n    backend.data = { ...backend.data, values: {\n      ...backend.data.values, 'altscreen.enabled': 'true', 'altscreen.profile': 'car',\n    } }\n    const profile = JSON.stringify({\n      name: 'Skoda test', display: { width: 1010, height: 376, widthMm: 202, heightMm: 75 },\n      areas: [[372, 58, 266, 249], [40, 58, 930, 216], [290, 61, 430, 245]],\n      views: [\n        { name: 'View 0', area: 0, scene: 'map' },\n        { name: 'View 1', area: 1, scene: 'map' },\n        { name: 'View 2', area: 2, scene: 'map' },\n        { name: 'View 3', cover: true },\n        { name: 'View 4', cover: true },\n      ],\n    })\n    backend.profiles = { profiles: [{ id: 'car', text: profile, builtIn: false }], active: 'car' }\n    const state = appState({ phase: 'active', canShowCarPlay: true })\n    const withView = (carView: number) => ({ ...state, controls: { ...state.controls!, carView } })\n    const page = render(<Shell state={withView(0)} backend={backend} />)\n    await screen.findByRole('textbox', { name: 'Network' })\n    fireEvent.click(screen.getByRole('tab', { name: 'AltScreen' }))\n    await screen.findByRole('textbox', { name: 'View name' })\n\n    page.rerender(<Shell state={withView(1)} backend={backend} />)\n    await waitFor(() => expect(within(screen.getByRole('radiogroup', { name: 'Car view' }))\n      .getByRole('radio', { name: 'View 1' }).getAttribute('aria-checked')).toBe('true'))\n    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'ETA' })).getByRole('radio', { name: 'Hide' }))\n    await waitFor(() => expect(backend.profileSaves).toHaveLength(1))\n    const first = JSON.parse(backend.profileSaves[0].text!)\n    expect(first.views[1].options.showETA).toBe('no')\n    expect(first.views[0].options).toBeUndefined()\n\n    const areas = () => screen.getByRole('img', { name: /All declared safe areas/ })\n    expect(areas().querySelectorAll('rect')).toHaveLength(4)\n    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Safe-area preview' }))\n      .getByRole('radio', { name: 'Active area' }))\n    expect(areas().querySelectorAll('rect')).toHaveLength(2)\n\n    page.rerender(<Shell state={withView(2)} backend={backend} />)\n    await waitFor(() => expect(within(screen.getByRole('radiogroup', { name: 'Car view' }))\n      .getByRole('radio', { name: 'View 2' }).getAttribute('aria-checked')).toBe('true'))\n    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Compass' })).getByRole('radio', { name: 'Show' }))\n    await waitFor(() => expect(backend.profileSaves).toHaveLength(2))\n    const second = JSON.parse(backend.profileSaves[1].text!)\n    expect(second.views[2].options.showCompass).toBe('yes')\n    expect(second.views[1].options.showETA).toBe('no')\n    expect(areas().querySelectorAll('rect')).toHaveLength(2)\n\n    page.rerender(<Shell state={withView(3)} backend={backend} />)\n    await waitFor(() => expect(screen.getByText(/map settings from View 2/)).toBeTruthy())\n    expect(within(screen.getByRole('radiogroup', { name: 'Car view' }))\n      .getByRole('radio', { name: 'View 2' }).getAttribute('aria-checked')).toBe('true')\n    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Safe-area preview' }))\n      .getByRole('radio', { name: 'All areas' }))\n    expect(areas().querySelectorAll('rect')).toHaveLength(4)\n  })\n\n  // Saved, the editor stays on the view being edited rather than going back to the first."
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/Screenshot.kt",
+      "before": "import java.nio.file.Path\nimport java.time.LocalDateTime",
+      "after": "import java.nio.file.Path\nimport java.time.LocalDateTime"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/Screenshot.kt",
+      "before": "private val FILE_TIME = DateTimeFormatter.ofPattern(\"yyyy-MM-dd-HHmmss\")",
+      "after": "/**\n * One persistent six-digit counter for screenshot actions. A paired F12 capture deliberately uses\n * the same sequence for Main and AltScreen, making the two pictures an analyzable pair.\n * A restart scans the existing screenshot filenames, so an older run is never silently overwritten.\n */\ninternal class ScreenshotSequence(private val dir: Path) {\n    private var last: Int? = null\n\n    @Synchronized\n    fun next(): String {\n        val folder = dir.resolve(\"screenshots\")\n        Files.createDirectories(folder)\n        val current = last ?: Files.list(folder).use { paths ->\n            paths.iterator().asSequence().mapNotNull { path ->\n                Regex(\"^([0-9]{6})-\").find(path.fileName.toString())?.groupValues?.get(1)?.toIntOrNull()\n            }.maxOrNull() ?: 0\n        }\n        require(current < 999999) { \"Screenshot sequence exhausted (999999); archive old screenshots\" }\n        val number = current + 1\n        last = number\n        return number.toString().padStart(6, '0')\n    }\n\n    /** Safe filenames carry the requested screen, actual Controller view, mapped area, and content at capture time. */\n    fun file(number: String, screen: String, profile: String?, view: Int?, viewName: String?, area: Int?, content: String?): Path {\n        fun label(value: String?): String = value.orEmpty().lowercase()\n            .replace(Regex(\"[^a-z0-9_-]+\"), \"-\").trim('-').take(36).ifBlank { \"unknown\" }\n        val viewPart = if (view == null) \"view-none\" else \"view-${view.toString().padStart(2, '0')}-${label(viewName)}-active\"\n        val areaPart = if (area == null) \"area-none\" else \"area-${area.toString().padStart(2, '0')}\"\n        val name = listOf(number, label(screen), \"profile-${label(profile)}\", viewPart, areaPart, \"mode-${label(content)}\",\n            LocalDateTime.now().format(DateTimeFormatter.ofPattern(\"yyyyMMdd-HHmmss\"))).joinToString(\"-\")\n        return dir.resolve(\"screenshots\").resolve(\"$name.png\")\n    }\n}\n\n/** Writes an explicitly named screenshot (sequence and active View captured before the asynchronous GL read). */\ninternal fun saveCapturedScreenshot(image: BufferedImage, file: Path, log: (String) -> Unit) {\n    try {\n        Files.createDirectories(file.parent)\n        check(ImageIO.write(image, \"png\", file.toFile())) { \"No PNG writer\" }\n        log(\"screenshot ${image.width}x${image.height}: $file\")\n    } catch (error: Exception) {\n        log(\"screenshot not saved: $error\")\n    }\n}\n\nprivate val FILE_TIME = DateTimeFormatter.ofPattern(\"yyyy-MM-dd-HHmmss\")"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/VideoWindow.kt",
+      "before": "private val screenshotRequest = AtomicReference<((BufferedImage) -> Unit)?>()",
+      "after": "private val screenshotRequest = AtomicReference<Pair<Boolean, (BufferedImage) -> Unit>?>()"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/VideoWindow.kt",
+      "before": "    fun screenshot(onImage: (BufferedImage) -> Unit) {\n        screenshotRequest.set(onImage)\n        wake()\n    }",
+      "after": "    fun screenshot(onImage: (BufferedImage) -> Unit) {\n        screenshotRequest.set(false to onImage)\n        wake()\n    }\n\n    /** Capture the actual window composition including the Skoda overlay, not only the raw iPhone map. */\n    fun screenshotWithOverlays(onImage: (BufferedImage) -> Unit) {\n        screenshotRequest.set(true to onImage)\n        wake()\n    }"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/VideoWindow.kt",
+      "before": "        val shot = screenshotRequest.getAndSet(null)\n        if (shot != null && showsHud) {\n            // The HUD is ours, not the iPhone's picture: save what the window shows.\n            val pixels = gl.readFramebuffer(w[0], h[0])\n            val (fw, fh) = w[0] to h[0]\n            Thread({ shot(screenshotImage(fw, fh, pixels)) }, \"screenshot\").apply { isDaemon = true }.start()\n        }\n        glfwSwapBuffers(window)\n        if (fresh != null) onFrameShown()\n        if (shot != null && !showsHud && shown != null) {\n            val pixels = gl.readPicture(shown)\n            Thread({ shot(screenshotImage(shown.width, shown.height, pixels)) }, \"screenshot\").apply { isDaemon = true }.start()\n        }",
+      "after": "        val shot = screenshotRequest.getAndSet(null)\n        if (shot != null && (showsHud || shot.first)) {\n            // For AltScreen, read the composed window before swapping: HUD, CarPlay and Skoda overlays.\n            val pixels = gl.readFramebuffer(w[0], h[0])\n            val (fw, fh) = w[0] to h[0]\n            Thread({ shot.second(screenshotImage(fw, fh, pixels)) }, \"screenshot\").apply { isDaemon = true }.start()\n        }\n        glfwSwapBuffers(window)\n        if (fresh != null) onFrameShown()\n        if (shot != null && !showsHud && !shot.first && shown != null) {\n            val pixels = gl.readPicture(shown)\n            Thread({ shot.second(screenshotImage(shown.width, shown.height, pixels)) }, \"screenshot\").apply { isDaemon = true }.start()\n        }"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/Main.kt",
+      "before": "import io.github.numberonebot.chairplay.media.saveScreenshot",
+      "after": "import io.github.numberonebot.chairplay.media.saveScreenshot\nimport io.github.numberonebot.chairplay.media.ScreenshotSequence\nimport io.github.numberonebot.chairplay.media.saveCapturedScreenshot"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/Main.kt",
+      "before": "    // F12 saves both screens, each at the size the iPhone draws it.\n    fun screenshots() {\n        window.screenshot { image -> saveScreenshot(image, dir, ::log) }\n        if (altView.on) altscreen.screenshot { image -> saveScreenshot(image, dir, ::log, \"altscreen\") }\n    }",
+      "after": "    val screenshotSequence = ScreenshotSequence(dir)\n    /** F12 still captures both; the two Controller buttons select only one display. */\n    fun screenshotTarget(target: String): Boolean {\n        if (target !in setOf(\"both\", \"main\", \"altscreen\")) return false\n        val captureMain = target != \"altscreen\" && window.visible\n        val captureAlt = target != \"main\" && altView.on && altscreen.visible\n        if (!captureMain && !captureAlt) return false\n        val number = runCatching { screenshotSequence.next() }.getOrElse {\n            log(\"screenshot sequence unavailable: $it\")\n            return false\n        }\n        // Snapshot metadata here, not when the asynchronous GL callback finishes after a View change.\n        val activeView = altView.carViews.current\n        val profile = altView.carViews.profile\n        val mappedArea = activeView?.let { index -> profile?.mapViewAt(index)?.area }\n        val viewName = activeView?.let { profile?.views?.getOrNull(it)?.name }\n        val mode = altView.content?.key ?: \"none\"\n        fun file(screen: String) = screenshotSequence.file(\n            number, screen, profile?.id, activeView, viewName, mappedArea,\n            if (active.get() == null) \"offline-$mode\" else mode,\n        )\n        if (captureMain) {\n            val destination = file(\"main\")\n            window.screenshot { image -> saveCapturedScreenshot(image, destination, ::log) }\n        }\n        if (captureAlt) {\n            val destination = file(\"altscreen\")\n            altscreen.screenshotWithOverlays { image -> saveCapturedScreenshot(image, destination, ::log) }\n        }\n        return true\n    }\n    fun screenshots() { screenshotTarget(\"both\") }"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/Main.kt",
+      "before": "uiDriving(driving, window, ::screenshots, ::log, dir)",
+      "after": "uiDriving(driving, window, ::screenshots, ::log, dir, ::screenshotTarget)"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/AppDriving.kt",
+      "before": "internal fun uiDriving(driving: Driving, window: VideoWindow, screenshots: () -> Unit, log: (String) -> Unit, dir: Path) = object : UiDriving {",
+      "after": "internal fun uiDriving(driving: Driving, window: VideoWindow, screenshots: () -> Unit, log: (String) -> Unit, dir: Path,\n    targetedScreenshots: (String) -> Boolean = { if (it == \"both\") { screenshots(); true } else false },\n) = object : UiDriving {"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/AppDriving.kt",
+      "before": "    override fun screenshot(): Boolean = true.also { screenshots() }",
+      "after": "    override fun screenshot(): Boolean = true.also { screenshots() }\n    override fun screenshotTarget(target: String): Boolean = targetedScreenshots(target)"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/AppWindows.kt",
+      "before": "private val CONTROLS_SIZE = WindowSize(207, 412)",
+      "after": "private val CONTROLS_SIZE = WindowSize(207, 464)"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/UiApi.kt",
+      "before": "    fun screenshot(): Boolean = false\n\n    /** The GPS page's Drive mode switch",
+      "after": "    fun screenshot(): Boolean = false\n    /** The Controller's separate screenshots; F12 and the old API still request both. */\n    fun screenshotTarget(target: String): Boolean = false\n\n    /** The GPS page's Drive mode switch"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/AppUiApi.kt",
+      "before": "    override fun screenshot() = driving()?.screenshot() ?: false",
+      "after": "    override fun screenshot() = driving()?.screenshot() ?: false\n    override fun screenshotTarget(target: String) = driving()?.screenshotTarget(target) ?: false"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/ChairPlayUi.kt",
+      "before": "    fun screenshot(): Boolean\n\n    /** See [UiApi.gpsRoute]",
+      "after": "    fun screenshot(): Boolean\n    fun screenshotTarget(target: String): Boolean = screenshot()\n\n    /** See [UiApi.gpsRoute]"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/UiPosts.kt",
+      "before": "        \"screenshot\" ->\n            if (api.screenshot()) json(200, mapOf(\"ok\" to true)) else json(409, mapOf(\"error\" to \"no screens\"))",
+      "after": "        \"screenshot\" -> {\n            val target = body[\"target\"] as? String\n            when {\n                target != null && target !in setOf(\"main\", \"altscreen\", \"both\") ->\n                    json(400, mapOf(\"error\" to \"screenshot target must be main, altscreen or both\"))\n                (if (target == null) api.screenshot() else api.screenshotTarget(target)) ->\n                    json(200, mapOf(\"ok\" to true))\n                else -> json(409, mapOf(\"error\" to \"the requested screen is not visible\"))\n            }\n        }"
+    },
+    {
+      "path": "webui/src/api.ts",
+      "before": "  /** Plays a HUD demo on the AltScreen, or stops it (null); false when none can play. */\n  demo(kind: DemoKind | null): Promise<boolean>",
+      "after": "  /** Capture one screen to numbered screenshots, including the active Controller view in its filename. */\n  screenshot(target: 'main' | 'altscreen'): Promise<boolean>\n  /** Plays a HUD demo on the AltScreen, or stops it (null); false when none can play. */\n  demo(kind: DemoKind | null): Promise<boolean>"
+    },
+    {
+      "path": "webui/src/apiClient.ts",
+      "before": "  async demo(kind: DemoKind | null): Promise<boolean> {",
+      "after": "  async screenshot(target: 'main' | 'altscreen'): Promise<boolean> {\n    return (await this.request('POST', 'screenshot', { target })).status === 200\n  }\n\n  async demo(kind: DemoKind | null): Promise<boolean> {"
+    },
+    {
+      "path": "webui/src/fakeBackend.ts",
+      "before": "  /** The HUD demos asked for, null for a stop. */",
+      "after": "  screenshots: ('main' | 'altscreen')[] = []\n  async screenshot(target: 'main' | 'altscreen') {\n    this.screenshots.push(target)\n    return true\n  }\n\n  /** The HUD demos asked for, null for a stop. */"
+    },
+    {
+      "path": "webui/src/controlsIcons.tsx",
+      "before": "  /** The car's View button: a cluster with its two dials. */",
+      "after": "  screenshot: (\n    <Icon>\n      <path d=\"M2 5h3l1-2h4l1 2h3v8H2z\" {...line} />\n      <circle cx=\"8\" cy=\"9\" r=\"2.5\" {...line} />\n    </Icon>\n  ),\n  /** The car's View button: a cluster with its two dials. */"
+    },
+    {
+      "path": "webui/src/ControlsScreen.tsx",
+      "before": "        <div className=\"key-row three\">\n          <Key {...shared} action=\"call.answer\"",
+      "after": "        <div className=\"key-row three\">\n          <Key {...shared} action=\"call.answer\""
+    },
+    {
+      "path": "webui/src/ControlsScreen.tsx",
+      "before": "          <Key {...shared} action=\"call.end\" label=\"End\" icon={icons.end} text=\"End\" className=\"end\" />\n        </div>\n      </div>",
+      "after": "          <Key {...shared} action=\"call.end\" label=\"End\" icon={icons.end} text=\"End\" className=\"end\" />\n        </div>\n        <div className=\"key-row two\">\n          <button type=\"button\" className=\"key\" aria-label=\"Screenshot main\"\n            title=\"Capture main CarPlay display, numbered and tagged with active View\"\n            onClick={() => void backend.screenshot('main')}>\n            {icons.screenshot}<span>Main shot</span>\n          </button>\n          <button type=\"button\" className=\"key\" aria-label=\"Screenshot AltScreen\"\n            title=\"Capture complete AltScreen including Skoda overlays and active View\"\n            disabled={!state.windows.altscreen.available || !state.windows.altscreen.visible}\n            onClick={() => void backend.screenshot('altscreen')}>\n            {icons.screenshot}<span>Alt shot</span>\n          </button>\n        </div>\n      </div>"
+    },
+    {
+      "path": "webui/src/styles/controls-knob.css",
+      "before": "  grid-template-rows: repeat(4, 1fr);",
+      "after": "  grid-template-rows: repeat(5, 1fr);"
+    },
+    {
+      "path": "src/test/kotlin/io/github/numberonebot/chairplay/media/ScreenshotTest.kt",
+      "before": "import java.nio.file.Path",
+      "after": "import java.nio.file.Path\nimport java.nio.file.Files\nimport org.junit.Assert.assertTrue"
+    },
+    {
+      "path": "src/test/kotlin/io/github/numberonebot/chairplay/media/ScreenshotTest.kt",
+      "before": "    @Test\n    fun `screenshots go to their own folder, named by the time they were taken`() {",
+      "after": "    @Test\n    fun `six-digit capture sequences survive restart and pair main with AltScreen`() {\n        val dir = Files.createTempDirectory(\"chairplay-shots\")\n        val first = ScreenshotSequence(dir)\n        assertEquals(\"000001\", first.next())\n        val main = first.file(\"000001\", \"main\", \"mu1440-790\", 2, \"Map + dials\", 6, \"map\")\n        val alt = first.file(\"000001\", \"altscreen\", \"mu1440-790\", 2, \"Map + dials\", 6, \"map\")\n        assertTrue(main.fileName.toString().startsWith(\"000001-main-profile-mu1440-790-view-02-map-dials-active-area-06-mode-map-\"))\n        assertTrue(alt.fileName.toString().startsWith(\"000001-altscreen-profile-mu1440-790-view-02-map-dials-active-area-06-mode-map-\"))\n        Files.createDirectories(main.parent)\n        Files.write(main, byteArrayOf(1))\n        Files.write(alt, byteArrayOf(2))\n        assertEquals(\"000002\", ScreenshotSequence(dir).next())\n        assertEquals(\"000002\", first.next())\n    }\n\n    @Test\n    fun `screenshots go to their own folder, named by the time they were taken`() {"
+    },
+    {
+      "path": "src/test/kotlin/io/github/numberonebot/chairplay/ui/AppUiApiTest.kt",
+      "before": "        assertFalse(api.screenshot())\n\n        val calls",
+      "after": "        assertFalse(api.screenshot())\n        assertFalse(api.screenshotTarget(\"main\"))\n\n        val calls"
+    },
+    {
+      "path": "src/test/kotlin/io/github/numberonebot/chairplay/ui/AppUiApiTest.kt",
+      "before": "            override fun screenshot() = true.also { calls += \"shot\" }",
+      "after": "            override fun screenshot() = true.also { calls += \"shot\" }\n            override fun screenshotTarget(target: String) = true.also { calls += \"shot $target\" }"
+    },
+    {
+      "path": "src/test/kotlin/io/github/numberonebot/chairplay/ui/AppUiApiTest.kt",
+      "before": "        assertTrue(api.driveMode(true) && api.gpsDrive(1.0, 0.0, 0.0) && api.screenshot())\n        assertEquals(listOf(\"mode true\", \"drive 1.0\", \"shot\"), calls)",
+      "after": "        assertTrue(api.driveMode(true) && api.gpsDrive(1.0, 0.0, 0.0) && api.screenshot())\n        assertTrue(api.screenshotTarget(\"altscreen\"))\n        assertEquals(listOf(\"mode true\", \"drive 1.0\", \"shot\", \"shot altscreen\"), calls)"
+    },
+    {
+      "path": "webui/src/ControlsScreen.test.tsx",
+      "before": "  it('turns the knob with the wheel', () => {",
+      "after": "  it('takes separately numbered main and AltScreen screenshots from Controller', () => {\n    const backend = new FakeBackend()\n    render(<ControlsScreen state={appState(live)} backend={backend} />)\n    fireEvent.click(screen.getByRole('button', { name: 'Screenshot main' }))\n    fireEvent.click(screen.getByRole('button', { name: 'Screenshot AltScreen' }))\n    expect(backend.screenshots).toEqual(['main', 'altscreen'])\n  })\n\n  it('turns the knob with the wheel', () => {"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/VideoWindow.kt",
+      "before": "import java.util.concurrent.atomic.AtomicReference",
+      "after": "import java.util.concurrent.atomic.AtomicReference\nimport java.util.concurrent.ConcurrentLinkedQueue"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/VideoWindow.kt",
+      "before": "private val screenshotRequest = AtomicReference<Pair<Boolean, (BufferedImage) -> Unit>?>()",
+      "after": "private val screenshotRequests = ConcurrentLinkedQueue<Pair<Boolean, (BufferedImage) -> Unit>>()"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/VideoWindow.kt",
+      "before": "screenshotRequest.set(false to onImage)",
+      "after": "screenshotRequests.add(false to onImage)"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/VideoWindow.kt",
+      "before": "screenshotRequest.set(true to onImage)",
+      "after": "screenshotRequests.add(true to onImage)"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/VideoWindow.kt",
+      "before": "val shot = screenshotRequest.getAndSet(null)",
+      "after": "val shot = screenshotRequests.poll()"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/VideoWindow.kt",
+      "before": "            Thread({ shot.second(screenshotImage(shown.width, shown.height, pixels)) }, \"screenshot\").apply { isDaemon = true }.start()\n        }\n        return true",
+      "after": "            Thread({ shot.second(screenshotImage(shown.width, shown.height, pixels)) }, \"screenshot\").apply { isDaemon = true }.start()\n        }\n        // A burst of capture requests should not overwrite each other: draw the next queued image.\n        if (screenshotRequests.isNotEmpty()) wake()\n        return true"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/Screenshot.kt",
+      "before": "import javax.imageio.ImageIO",
+      "after": "import javax.imageio.ImageIO\nimport io.github.numberonebot.chairplay.config.ClusterProfiles\nimport io.github.numberonebot.chairplay.ui.Json\nimport java.security.MessageDigest\nimport java.time.OffsetDateTime\nimport java.util.Locale\nimport java.util.Properties\nimport java.nio.file.StandardCopyOption"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/Screenshot.kt",
+      "before": "Regex(\"^([0-9]{6})-\").find(path.fileName.toString())",
+      "after": "Regex(\"^([0-9]{6})(?:-|\\\\.json$)\").find(path.fileName.toString())"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/Screenshot.kt",
+      "before": "private val FILE_TIME = DateTimeFormatter.ofPattern(\"yyyy-MM-dd-HHmmss\")",
+      "after": "private val FILE_TIME = DateTimeFormatter.ofPattern(\"yyyy-MM-dd-HHmmss\")\n\n/**\n * Screenshot configuration code K1. All variable-length data (shapes, coordinates, options,\n * and every view block) is held losslessly in the same numbered JSON sidecar, not in the name.\n *\n * Flags, least significant bit first:\n * 0..1 ETA, 2..3 speed limit, 4..5 compass: 0 default, 1 yes, 2 no, 3 custom.\n * 6..8 maneuver: 0 default, 1 left, 2 right, 3 top, 4 none, 7 custom.\n * 9..10 scene: 0 map, 1 instrumentcluster, 2 overlay-only, 3 custom.\n * 11..12 content: 0 HUD, 1 map, 2 map-card, 3 other.\n * 13 overlay cover, 14 active view has its own map, 15 phone connected.\n *\n * Z contains four big-endian base36 pairs, in this exact order:\n * main zoomFactor (00=Auto), main physicalZoom, cluster zoomFactor, cluster physicalZoom.\n * An explicit K1 marker in every filename makes future layouts backward-compatible.\n */\ninternal class ScreenshotRecord private constructor(\n    private val dir: Path,\n    private val number: String,\n    private val profileId: String?,\n    private val viewIndex: Int?,\n    private val areaIndex: Int?,\n    private val activeMode: String,\n    private val flags: String,\n    private val zoom: String,\n    private val fingerprint: String,\n    private val snapshot: Map<String, Any?>,\n) {\n    fun file(screen: String): Path {\n        require(screen == \"main\" || screen == \"altscreen\") { \"Unknown capture screen $screen\" }\n        val tag = if (screen == \"main\") \"M\" else \"A\"\n        val profileTag = profileId.orEmpty().lowercase(Locale.ROOT)\n            .replace(Regex(\"[^a-z0-9_-]\"), \"-\").take(16).ifBlank { \"none\" }\n        val viewTag = viewIndex?.toString()?.padStart(2, '0') ?: \"xx\"\n        val areaTag = areaIndex?.toString()?.padStart(2, '0') ?: \"xx\"\n        val filename = \"$number-$tag-v$viewTag-a$areaTag-p$profileTag-k1-$flags-z$zoom-h$fingerprint.png\"\n        require(filename.length <= 112) { \"Screenshot filename exceeds 112 characters\" }\n        return dir.resolve(\"screenshots\").resolve(filename)\n    }\n\n    fun saveMetadata(screens: List<String>) {\n        val folder = dir.resolve(\"screenshots\")\n        val images = screens.associateWith { file(it).fileName.toString() }\n        val details = linkedMapOf<String, Any?>(\n            \"schema\" to \"chairplay-screenshot-k1\",\n            \"sequence\" to number,\n            \"capturedAt\" to OffsetDateTime.now().toString(),\n            \"images\" to images,\n            \"state\" to snapshot,\n            \"encoding\" to mapOf(\n                \"version\" to \"k1\",\n                \"flagsHex\" to flags,\n                \"zoomBase36\" to zoom,\n                \"fingerprintSha256_12\" to fingerprint,\n                \"flagLayout\" to mapOf(\n                    \"bits0to1\" to \"ETA: default=0 yes=1 no=2 custom=3\",\n                    \"bits2to3\" to \"speedLimit: default=0 yes=1 no=2 custom=3\",\n                    \"bits4to5\" to \"compass: default=0 yes=1 no=2 custom=3\",\n                    \"bits6to8\" to \"maneuver: default=0 left=1 right=2 top=3 none=4 custom=7\",\n                    \"bits9to10\" to \"scene: map=0 instrumentcluster=1 overlayOnly=2 custom=3\",\n                    \"bits11to12\" to \"content: HUD=0 map=1 mapCard=2 other=3\",\n                    \"bit13\" to \"active controller view covers the map\",\n                    \"bit14\" to \"active controller view owns a map area\",\n                    \"bit15\" to \"iPhone connected\",\n                ),\n                \"zoomOrder\" to listOf(\"main.zoomFactor\", \"main.physicalZoom\",\n                    \"cluster.zoomFactor\", \"cluster.physicalZoom\"),\n                \"zoomNote\" to \"Each 2-character base36 pair is a decimal percentage; zoomFactor 00 means Auto\",\n            ),\n        )\n        Files.createDirectories(folder)\n        val destination = folder.resolve(\"$number.json\")\n        val temporary = folder.resolve(\"$number.json.tmp\")\n        try {\n            Files.writeString(temporary, Json.write(details))\n            Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)\n        } finally {\n            Files.deleteIfExists(temporary)\n        }\n    }\n\n    companion object {\n        private fun valueCode(value: String?) = when (value) {\n            null, \"\" -> 0\n            \"yes\" -> 1\n            \"no\" -> 2\n            else -> 3\n        }\n        private fun maneuverCode(value: String?) = when (value) {\n            null, \"\" -> 0\n            \"leftAligned\" -> 1\n            \"rightAligned\" -> 2\n            \"topAligned\" -> 3\n            \"no\" -> 4\n            else -> 7\n        }\n        private fun percent(value: Int): String {\n            require(value in 0..1295) { \"Percentage outside K1 representation: $value\" }\n            return value.toString(36).uppercase(Locale.ROOT).padStart(2, '0')\n        }\n        private fun asInt(value: Any?): Int? = (value as? Number)?.toInt()\n        private fun map(value: Any?): Map<*, *>? = value as? Map<*, *>\n\n        fun create(dir: Path, number: String, profileId: String?, viewIndex: Int?,\n            mode: String, connected: Boolean): ScreenshotRecord {\n            // Do not export network, phone, pairing or other unrelated settings.\n            val settings = runCatching {\n                val properties = Properties()\n                Files.newBufferedReader(dir.resolve(\"settings.properties\")).use { reader -> properties.load(reader) }\n                properties.stringPropertyNames().filter {\n                    it.startsWith(\"display.\") || it.startsWith(\"altscreen.\")\n                }.sorted().associateWith(properties::getProperty)\n            }.getOrDefault(emptyMap())\n            val profile = profileId?.let { id ->\n                runCatching { Json.parse(ClusterProfiles(dir).text(id)) as? Map<*, *> }.getOrNull()\n            }\n            val views = (profile?.get(\"views\") as? List<*>).orEmpty()\n            val actual = viewIndex?.takeIf { it in views.indices }\n            val hasArea: (Int) -> Boolean = { i -> asInt(map(views[i])?.get(\"area\")) != null }\n            val mapIndex = actual?.let { index ->\n                (index downTo 0).firstOrNull(hasArea) ?: views.indices.firstOrNull(hasArea)\n            }\n            val selected = actual?.let { map(views[it]) }\n            val source = mapIndex?.let { map(views[it]) }\n            val options = map(source?.get(\"options\"))\n            val area = asInt(source?.get(\"area\"))\n            val scene = when {\n                actual != null && source == null -> \"overlay\"\n                actual != null && !hasArea(actual) -> \"overlay\"\n                else -> source?.get(\"scene\") as? String ?: \"map\"\n            }\n            val sceneCode = when (scene) {\n                \"map\" -> 0\n                \"instrumentcluster\" -> 1\n                \"overlay\" -> 2\n                else -> 3\n            }\n            val modeCode = when (mode) {\n                \"hud\" -> 0\n                \"map\" -> 1\n                \"map-card\" -> 2\n                else -> 3\n            }\n            val packed = valueCode(options?.get(\"showETA\") as? String) or\n                (valueCode(options?.get(\"showSpeedLimit\") as? String) shl 2) or\n                (valueCode(options?.get(\"showCompass\") as? String) shl 4) or\n                (maneuverCode(options?.get(\"maneuverLayout\") as? String) shl 6) or\n                (sceneCode shl 9) or (modeCode shl 11) or\n                (if (selected?.get(\"cover\") == true) (1 shl 13) else 0) or\n                (if (actual != null && hasArea(actual)) (1 shl 14) else 0) or\n                (if (connected) (1 shl 15) else 0)\n            val flags = \"%04X\".format(Locale.ROOT, packed)\n            val clusterDisplay = map(profile?.get(\"display\"))\n            val mainZoom = settings[\"display.zoom.factor\"]?.toIntOrNull() ?: 0\n            val mainPhysical = settings[\"display.physical.zoom\"]?.toIntOrNull() ?: 100\n            val clusterZoom = asInt(clusterDisplay?.get(\"zoomFactor\")) ?: 0\n            val clusterPhysical = asInt(clusterDisplay?.get(\"physicalZoom\")) ?: 100\n            val zoom = listOf(mainZoom, mainPhysical, clusterZoom, clusterPhysical)\n                .joinToString(\"\") { percent(it) }\n            val activeState = linkedMapOf<String, Any?>(\n                \"profileId\" to profileId,\n                \"controllerView\" to viewIndex,\n                \"controllerViewName\" to selected?.get(\"name\"),\n                \"mapView\" to mapIndex,\n                \"mapArea\" to area,\n                \"mode\" to mode,\n                \"connected\" to connected,\n                \"effectiveMapScene\" to source?.get(\"scene\"),\n                \"effectiveMapOptions\" to options,\n            )\n            val mainPixelsWidth = settings[\"display.width\"]?.toIntOrNull() ?: 1280\n            val mainPixelsHeight = settings[\"display.height\"]?.toIntOrNull() ?: 720\n            val mainPpi = settings[\"display.ppi\"]?.toIntOrNull()?.takeIf { it > 0 }\n            val mainSetWidth = settings[\"display.physical.width.mm\"]?.toIntOrNull()\n            val mainMmWidth = mainSetWidth\n                ?: mainPpi?.let { Math.round(mainPixelsWidth * 25.4 / it).toInt() } ?: 200\n            val mainMmHeight = settings[\"display.physical.height.mm\"]?.toIntOrNull()\n                ?: (if (mainSetWidth == null) mainPpi?.let { Math.round(mainPixelsHeight * 25.4 / it).toInt() }\n                else null)\n                ?: Math.round(mainMmWidth.toDouble() * mainPixelsHeight / mainPixelsWidth).toInt()\n            val mainDisplay = linkedMapOf<String, Any?>(\n                \"widthPixels\" to mainPixelsWidth, \"heightPixels\" to mainPixelsHeight,\n                \"widthPhysicalMm\" to mainMmWidth, \"heightPhysicalMm\" to mainMmHeight,\n                \"maxFPS\" to (settings[\"display.fps\"]?.toIntOrNull() ?: 60),\n                \"zoomFactor\" to mainZoom.takeIf { it > 0 }, \"physicalZoom\" to mainPhysical,\n                \"effectiveWidthMm\" to Math.round(mainMmWidth.toDouble() * 100 / mainPhysical).toInt(),\n                \"effectiveHeightMm\" to Math.round(mainMmHeight.toDouble() * 100 / mainPhysical).toInt(),\n            )\n            val clusterDisplayInfo = clusterDisplay?.let {\n                val wm = asInt(it[\"widthMm\"]) ?: 0\n                val hm = asInt(it[\"heightMm\"]) ?: 0\n                linkedMapOf<String, Any?>(\n                    \"widthPixels\" to asInt(it[\"width\"]), \"heightPixels\" to asInt(it[\"height\"]),\n                    \"widthPhysicalMm\" to wm, \"heightPhysicalMm\" to hm,\n                    \"maxFPS\" to asInt(it[\"fps\"]), \"zoomFactor\" to clusterZoom.takeIf { it > 0 },\n                    \"physicalZoom\" to clusterPhysical,\n                    \"effectiveWidthMm\" to Math.round(wm.toDouble() * 100 / clusterPhysical).toInt(),\n                    \"effectiveHeightMm\" to Math.round(hm.toDouble() * 100 / clusterPhysical).toInt(),\n                )\n            }\n            val snapshot = linkedMapOf<String, Any?>(\n                \"active\" to activeState,\n                \"mainDisplay\" to mainDisplay,\n                \"clusterDisplay\" to clusterDisplayInfo,\n                \"visualSettingsFromDisk\" to settings,\n                \"profileFullJson\" to profile,\n                \"note\" to \"Saved configuration at capture request; iPhone may still use earlier descriptor until reconnect\",\n            )\n            val canonical = Json.write(mapOf(\"state\" to snapshot, \"k1\" to flags, \"zoom\" to zoom))\n            val hash = MessageDigest.getInstance(\"SHA-256\").digest(canonical.toByteArray(Charsets.UTF_8))\n                .take(6).joinToString(\"\") { \"%02X\".format(Locale.ROOT, it.toInt() and 255) }\n            return ScreenshotRecord(dir, number, profileId, viewIndex, area, mode, flags, zoom, hash, snapshot)\n        }\n    }\n}\n"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/Main.kt",
+      "before": "import io.github.numberonebot.chairplay.media.saveCapturedScreenshot",
+      "after": "import io.github.numberonebot.chairplay.media.saveCapturedScreenshot\nimport io.github.numberonebot.chairplay.media.ScreenshotRecord"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/Main.kt",
+      "before": "        // Snapshot metadata here, not when the asynchronous GL callback finishes after a View change.\n        val activeView = altView.carViews.current\n        val profile = altView.carViews.profile\n        val mappedArea = activeView?.let { index -> profile?.mapViewAt(index)?.area }\n        val viewName = activeView?.let { profile?.views?.getOrNull(it)?.name }\n        val mode = altView.content?.key ?: \"none\"\n        fun file(screen: String) = screenshotSequence.file(\n            number, screen, profile?.id, activeView, viewName, mappedArea,\n            if (active.get() == null) \"offline-$mode\" else mode,\n        )\n        if (captureMain) {\n            val destination = file(\"main\")\n            window.screenshot { image -> saveCapturedScreenshot(image, destination, ::log) }\n        }\n        if (captureAlt) {\n            val destination = file(\"altscreen\")\n            altscreen.screenshotWithOverlays { image -> saveCapturedScreenshot(image, destination, ::log) }\n        }\n        return true",
+      "after": "        // Snapshot the FULL current profile and the nonsecret display settings before any\n        // asynchronous framebuffer read; metadata must describe the requested capture, not a later View.\n        val record = runCatching {\n            ScreenshotRecord.create(\n                dir, number, altView.carViews.profile?.id, altView.carViews.current,\n                altView.content?.key ?: \"none\", active.get() != null,\n            )\n        }.getOrElse {\n            log(\"screenshot metadata failed: $it\")\n            return false\n        }\n        val screens = listOfNotNull(\"main\".takeIf { captureMain }, \"altscreen\".takeIf { captureAlt })\n        if (!runCatching { record.saveMetadata(screens) }.onFailure {\n            log(\"screenshot metadata cannot be saved: $it\")\n        }.isSuccess) return false\n        if (captureMain) {\n            val destination = record.file(\"main\")\n            window.screenshot { image -> saveCapturedScreenshot(image, destination, ::log) }\n        }\n        if (captureAlt) {\n            val destination = record.file(\"altscreen\")\n            altscreen.screenshotWithOverlays { image -> saveCapturedScreenshot(image, destination, ::log) }\n        }\n        return true"
+    },
+    {
+      "path": "src/test/kotlin/io/github/numberonebot/chairplay/media/ScreenshotTest.kt",
+      "before": "import org.junit.Assert.assertTrue",
+      "after": "import org.junit.Assert.assertTrue\nimport io.github.numberonebot.chairplay.ui.Json"
+    },
+    {
+      "path": "src/test/kotlin/io/github/numberonebot/chairplay/media/ScreenshotTest.kt",
+      "before": "    @Test\n    fun `screenshots go to their own folder, named by the time they were taken`() {",
+      "after": "    @Test\n    fun `K1 filename uses bounded bitfields and JSON sidecar captures all view and display data`() {\n        val dir = Files.createTempDirectory(\"chairplay-k1\")\n        val profileDir = Files.createDirectories(dir.resolve(\"profiles\"))\n        Files.writeString(profileDir.resolve(\"demo.json\"), \"\"\"\n            {\n              \"name\": \"Demo\", \"display\": {\n                \"width\":1010, \"height\":376, \"widthMm\":202, \"heightMm\":75,\n                \"fps\":40, \"zoomFactor\":85, \"physicalZoom\":125\n              },\n              \"areas\":[[372,58,266,249],[40,58,930,216]],\n              \"shapes\":[{\"kind\":\"text\",\"value\":\"overlay\"}],\n              \"views\":[\n                {\"name\":\"Map + dials\",\"area\":0},\n                {\"name\":\"Wide map\",\"area\":1,\"scene\":\"map\",\n                 \"options\":{\"showETA\":\"yes\",\"showSpeedLimit\":\"no\",\"showCompass\":\"yes\",\n                 \"maneuverLayout\":\"rightAligned\"},\"shapes\":[{\"kind\":\"line\",\"x\":5}]},\n                {\"name\":\"Cover\",\"cover\":true}\n              ]\n            }\n        \"\"\".trimIndent())\n        Files.writeString(dir.resolve(\"settings.properties\"),\n            \"display.zoom.factor=125\\ndisplay.physical.zoom=100\\ndisplay.width=1280\\ndisplay.height=720\\nwifi.passphrase=DO_NOT_EXPORT\\n\")\n        val record = ScreenshotRecord.create(dir, \"000123\", \"demo\", 1, \"map\", true)\n        val main = record.file(\"main\")\n        val alt = record.file(\"altscreen\")\n        assertEquals(\"000123-M-v01-a01-pdemo-k1-C899-z3H2S2D3H\", main.fileName.toString().substringBefore(\"-h\"))\n        assertTrue(alt.fileName.toString().startsWith(\"000123-A-v01-a01-pdemo-k1-C899-z3H2S2D3H-h\"))\n        assertTrue(main.fileName.toString().length < 100)\n        record.saveMetadata(listOf(\"main\", \"altscreen\"))\n        val json = Json.parse(Files.readString(dir.resolve(\"screenshots/000123.json\"))) as Map<*, *>\n        assertEquals(\"chairplay-screenshot-k1\", json[\"schema\"])\n        val images = json[\"images\"] as Map<*, *>\n        assertEquals(main.fileName.toString(), images[\"main\"])\n        assertEquals(alt.fileName.toString(), images[\"altscreen\"])\n        val snapshot = json[\"state\"] as Map<*, *>\n        val settings = snapshot[\"visualSettingsFromDisk\"] as Map<*, *>\n        assertEquals(\"125\", settings[\"display.zoom.factor\"])\n        assertTrue(!settings.containsKey(\"wifi.passphrase\"))\n        val full = snapshot[\"profileFullJson\"] as Map<*, *>\n        assertEquals(3, (full[\"views\"] as List<*>).size)\n        assertEquals(2, (full[\"areas\"] as List<*>).size)\n        assertEquals(1, (full[\"shapes\"] as List<*>).size)\n        val active = snapshot[\"active\"] as Map<*, *>\n        assertEquals(1L, active[\"controllerView\"]?.let { (it as Number).toLong() })\n        assertEquals(\"no\", (active[\"effectiveMapOptions\"] as Map<*, *>)[\"showSpeedLimit\"])\n        assertEquals(\"000124\", ScreenshotSequence(dir).next())\n        val overlay = ScreenshotRecord.create(dir, \"000124\", \"demo\", 2, \"map\", true)\n        assertTrue(overlay.file(\"altscreen\").fileName.toString().contains(\"-v02-a01-\"))\n    }\n\n    @Test\n    fun `screenshots go to their own folder, named by the time they were taken`() {"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/config/ClusterProfiles.kt",
+      "before": "import java.nio.file.Files\nimport java.nio.file.Path",
+      "after": "import java.nio.file.Files\nimport java.nio.file.Path\nimport io.github.numberonebot.chairplay.ui.Json"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/config/ClusterProfiles.kt",
+      "before": "class ClusterProfiles(dir: Path) {\n    val folder: Path = dir.resolve(\"profiles\")",
+      "after": "class ClusterProfiles(dir: Path) {\n    val folder: Path = dir.resolve(\"profiles\")\n    val overlaysFolder: Path = dir.resolve(\"overlays\")\n\n    /** Reusable cockpit drawings, independent of firmware/profile; JSON {name, shapes:[...]}. */\n    fun overlayIds(): List<String> = if (Files.isDirectory(overlaysFolder))\n        overlaysFolder.listDirectoryEntries(\"*.json\").map { it.nameWithoutExtension }.sorted()\n    else emptyList()\n\n    fun overlayText(id: String): String {\n        require(ID.matches(id)) { \"Invalid overlay id: $id\" }\n        return Files.readString(overlaysFolder.resolve(\"$id.json\"))\n    }\n\n    private fun overlayShapes(id: String): List<Map<*, *>> {\n        val root = Json.parse(overlayText(id)) as? Map<*, *>\n            ?: throw IllegalArgumentException(\"Overlay $id must be a JSON object\")\n        return (root[\"shapes\"] as? List<*>)?.map {\n            it as? Map<*, *> ?: throw IllegalArgumentException(\"Overlay $id contains a non-object shape\")\n        } ?: throw IllegalArgumentException(\"Overlay $id requires a shapes array\")\n    }\n\n    /** Invalid references refuse a save; the original profile and its inline overlays are left intact. */\n    private fun effective(id: String, text: String): ClusterProfile {\n        val root = Json.parse(text) as? Map<*, *>\n            ?: throw IllegalArgumentException(\"$id must be a JSON object\")\n        val items = root[\"views\"] as? List<*> ?: emptyList<Any>()\n        val resolved = items.map { item ->\n            val view = item as? Map<*, *> ?: throw IllegalArgumentException(\"$id contains a bad view\")\n            val ref = view[\"overlay\"] as? String\n            if (ref.isNullOrBlank()) view else {\n                require(ID.matches(ref)) { \"Invalid overlay reference: $ref\" }\n                LinkedHashMap(view).apply { put(\"shapes\", overlayShapes(ref)) }\n            }\n        }\n        return ClusterProfile.parse(id, Json.write(LinkedHashMap(root).apply { put(\"views\", resolved) }))\n    }\n\n    fun saveOverlay(id: String, text: String): String? {\n        if (!ID.matches(id)) return \"Overlay ID allows only letters, digits, dots, hyphens and underscores (up to 64)\"\n        if (text.toByteArray(Charsets.UTF_8).size > 1_048_576) return \"Overlay JSON must be at most 1 MiB\"\n        runCatching {\n            val root = Json.parse(text) as? Map<*, *> ?: error(\"Overlay must be an object\")\n            val shapes = root[\"shapes\"] as? List<*> ?: error(\"Overlay requires shapes array\")\n            require(shapes.size <= 1500 && shapes.all { it is Map<*, *> }) { \"Overlay has invalid shapes\" }\n        }.onFailure { return it.message ?: \"Invalid overlay JSON\" }\n        Files.createDirectories(overlaysFolder)\n        Files.writeString(overlaysFolder.resolve(\"$id.json\"), text)\n        return null\n    }"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/config/ClusterProfiles.kt",
+      "before": "fun load(id: String): ClusterProfile = ClusterProfile.parse(id, text(id))",
+      "after": "fun load(id: String): ClusterProfile = effective(id, text(id))"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/config/ClusterProfiles.kt",
+      "before": "runCatching { ClusterProfile.parse(id, text) }.onFailure { return it.message }",
+      "after": "runCatching { effective(id, text) }.onFailure { return it.message }"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/UiProfiles.kt",
+      "before": "    fun save(id: String, text: String?): String?\n}",
+      "after": "    fun save(id: String, text: String?): String?\n    /** Save reusable, separately referenced cockpit overlay JSON. */\n    fun saveOverlay(id: String, text: String): String? = \"Overlay files are not supported\"\n}"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/AppProfiles.kt",
+      "before": "        \"active\" to activeId(),\n    )",
+      "after": "        \"active\" to activeId(),\n        \"overlays\" to store.overlayIds().map { overlay ->\n            mapOf(\"id\" to overlay, \"text\" to runCatching { store.overlayText(overlay) }.getOrDefault(\"\"))\n        },\n    )\n\n    override fun saveOverlay(id: String, text: String): String? {\n        val error = store.saveOverlay(id, text)\n        if (error == null) {\n            log(\"cockpit overlay $id saved\")\n            activeId()?.let { active ->\n                runCatching { store.load(active) }.onSuccess { altView.carViews.profile = it }\n                    .onFailure { log(\"overlay refresh failed: $it\") }\n            }\n        }\n        return error\n    }"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/UiApi.kt",
+      "before": "    fun saveClusterProfile(id: String, text: String?): String? = \"No car profiles here\"",
+      "after": "    fun saveClusterProfile(id: String, text: String?): String? = \"No car profiles here\"\n    /** A JSON drawing in overlays/<id>.json, referenced by a vehicle View. */\n    fun saveClusterOverlay(id: String, text: String): String? = \"No car overlays here\""
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/AppUiApi.kt",
+      "before": "    override fun saveClusterProfile(id: String, text: String?): String? = profiles().let { it?.save(id, text) ?: if (it == null) \"No car profiles here\" else null }",
+      "after": "    override fun saveClusterProfile(id: String, text: String?): String? = profiles().let { it?.save(id, text) ?: if (it == null) \"No car profiles here\" else null }\n    override fun saveClusterOverlay(id: String, text: String): String? =\n        profiles().let { it?.saveOverlay(id, text) ?: \"No car overlays here\" }"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/UiPosts.kt",
+      "before": "        \"cluster-profile\" -> {",
+      "after": "        \"cluster-overlay\" -> {\n            val id = body[\"id\"] as? String\n            val text = body[\"text\"] as? String\n            val error = if (id == null || text == null) \"Overlay id and text required\"\n                else api.saveClusterOverlay(id, text)\n            if (error != null) json(409, mapOf(\"error\" to error))\n            else json(200, mapOf(\"ok\" to true))\n        }\n        \"cluster-profile\" -> {"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/UiPlaces.kt",
+      "before": "\"logs\", \"screenshots\", \"profiles\" -> Files.createDirectories(setup.settingsFile.resolveSibling(place)).toString()",
+      "after": "\"logs\", \"screenshots\", \"profiles\", \"overlays\" -> Files.createDirectories(setup.settingsFile.resolveSibling(place)).toString()"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/UiPlaces.kt",
+      "before": "\"logs\", \"screenshots\", \"profiles\", \"buy-me-a-coffee\",",
+      "after": "\"logs\", \"screenshots\", \"profiles\", \"overlays\", \"buy-me-a-coffee\","
+    },
+    {
+      "path": "webui/src/pages/profileEdits.ts",
+      "before": "  shapes?: unknown[]\n}",
+      "after": "  shapes?: unknown[]\n  /** Optional reusable drawing in overlays/<id>.json. Inline shapes remain as a fallback. */\n  overlay?: string\n}"
+    },
+    {
+      "path": "webui/src/pages/profileEdits.ts",
+      "before": "/** Drop unused legacy areas and remap the actual mapped vehicle views to dense 0..N-1 area indices. */",
+      "after": "/** Assign an external overlay file to this view, without changing its existing inline shapes. */\nexport function setViewOverlay(profile: Profile, index: number, file: string): Profile {\n  return withView(profile, index, (view) => {\n    const { overlay: _, ...rest } = view\n    return file ? { ...rest, overlay: file } : rest\n  })\n}\n\n/** Copy a shared or inherited rectangle into an independently editable area. */\nexport function cloneViewArea(profile: Profile, index: number): Profile {\n  const view = profile.views[index]\n  if (view.area === undefined || !profile.areas[view.area]) return profile\n  const areas = [...profile.areas, [...profile.areas[view.area]]]\n  return { ...profile, areas,\n    views: profile.views.map((v, i) => i === index ? { ...v, area: areas.length - 1 } : v) }\n}\n\n/** New vehicle can begin with just one map view; no decorative overlay is required. */\nexport function newBlankProfile(): Profile {\n  return {\n    name: 'New vehicle',\n    display: { width: 1280, height: 480, widthMm: 240, heightMm: 90, fps: 40, features: 10, primaryInputDevice: 3 },\n    areas: [[128, 48, 1024, 384]],\n    initialView: 0,\n    views: [{ name: 'View 0', area: 0, scene: 'map', options: {}, shapes: [] }],\n  }\n}\n\n/** Drop unused legacy areas and remap the actual mapped vehicle views to dense 0..N-1 area indices. */"
+    },
+    {
+      "path": "webui/src/api.ts",
+      "before": "export interface ClusterProfilesData {\n  profiles: ClusterProfileFile[]\n  active?: string | null\n}",
+      "after": "export interface ClusterProfilesData {\n  profiles: ClusterProfileFile[]\n  active?: string | null\n  /** Reusable overlay drawings from overlays/<id>.json. */\n  overlays?: { id: string; text: string }[]\n}"
+    },
+    {
+      "path": "webui/src/api.ts",
+      "before": "  | 'profiles'",
+      "after": "  | 'profiles'\n  | 'overlays'"
+    },
+    {
+      "path": "webui/src/api.ts",
+      "before": "  saveClusterProfile(id: string, text: string | null): Promise<string | null>",
+      "after": "  saveClusterProfile(id: string, text: string | null): Promise<string | null>\n  /** Write a reusable overlay file; views reference it by ID. */\n  saveClusterOverlay(id: string, text: string): Promise<string | null>"
+    },
+    {
+      "path": "webui/src/apiClient.ts",
+      "before": "  async showAltscreenFrame(view?: string): Promise<boolean> {",
+      "after": "  async saveClusterOverlay(id: string, text: string): Promise<string | null> {\n    const { status, data } = await this.request('POST', 'cluster-overlay', { id, text })\n    return status === 200 ? null : (data.error ?? `Error ${status}`)\n  }\n\n  async showAltscreenFrame(view?: string): Promise<boolean> {"
+    },
+    {
+      "path": "webui/src/fakeBackend.ts",
+      "before": "  profileAnswer: string | null = null",
+      "after": "  profileAnswer: string | null = null\n  overlaySaves: { id: string; text: string }[] = []\n  async saveClusterOverlay(id: string, text: string): Promise<string | null> {\n    this.overlaySaves.push({ id, text })\n    this.profiles = { ...this.profiles,\n      overlays: [...(this.profiles.overlays ?? []).filter((o) => o.id !== id), { id, text }] }\n    return null\n  }"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "import { addView, compactAreas, mapViewIndex, removeView, setDisplay, setZoomFactor, type Profile } from './profileEdits'",
+      "after": "import { addView, cloneViewArea, compactAreas, mapViewIndex, newBlankProfile, removeView, setDisplay, setViewOverlay, setZoomFactor, type Profile } from './profileEdits'"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "  const [copyName, setCopyName] = useState('')",
+      "after": "  const [copyName, setCopyName] = useState('')\n  const [overlayName, setOverlayName] = useState('')"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "  const editingView = followController && activeMapIndex >= 0 ? activeMapIndex : view",
+      "after": "  // Follow the actual Controller slot, not its inherited map URL; overlay-only slots stay editable.\n  const editingView = followController && editing === chosen && liveCarView !== null && liveCarView >= 0\n    && liveCarView < (draft?.views.length ?? 0) ? liveCarView : view"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "  function change(next: Profile, mode: 'url' | 'descriptor' | null = null) {",
+      "after": "  function change(next: Profile, mode: 'url' | 'descriptor' | 'local' | null = null) {"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "setDone(mode === 'url' ? 'Saved active view: live iPhone URL requested' : 'Display settings saved; reconnect required')",
+      "after": "setDone(mode === 'url' ? 'Saved: live CarPlay URL requested'\n              : mode === 'local' ? 'Saved: local cockpit overlay updated'\n              : 'Saved: display changes require CarPlay reconnect')"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "      <Group title=\"Car profile\" note=\"The car's cluster as its head unit declares it, with its views and schematic\" />",
+      "after": "      <Group title=\"Vehicle Profile\" note=\"One vehicle contains its display settings, named Controller views, safe areas and overlays\" />"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "        <button type=\"button\" className=\"btn small\" onClick={() => void backend.open('profiles')}>\n          Open folder\n        </button>",
+      "after": "        <button type=\"button\" className=\"btn small\" onClick={() => void backend.open('profiles')}>\n          Open profiles folder\n        </button>\n        <button type=\"button\" className=\"btn small\" onClick={() => {\n          const profile = newBlankProfile()\n          setDraft(profile)\n          setText(JSON.stringify(profile, null, 2))\n          setEditing(null)\n          setFollowController(false)\n          setView(0)\n          setCopyName('')\n          setDone('New blank vehicle profile: enter an ID under Save as, then Save copy')\n          setProblem(null)\n        }}>New blank vehicle</button>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "      <Row label=\"Profile\" title=\"The car whose cluster the AltScreen copies, from the next connection\">",
+      "after": "      <Row label=\"Active vehicle\" title=\"The vehicle profile the iPhone negotiates on reconnect\">"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "          label=\"Profile\"\n          value={chosen}",
+      "after": "          label=\"Profile\"\n          value={chosen}"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              <Row label=\"Name\">\n                <Field label=\"Name\" value={draft.name ?? ''} onCommit={(t) => change({ ...draft, name: t.trim() }, 'descriptor')} />\n              </Row>",
+      "after": "              <Row label=\"Vehicle name\">\n                <Field label=\"Name\" value={draft.name ?? ''} onCommit={(t) => change({ ...draft, name: t.trim() }, 'descriptor')} />\n              </Row>\n              <Row><small>Profile ID: {editing ?? 'new / unsaved'} · {draft.views.length} Controller views · {draft.areas.length} declared areas</small></Row>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              <Group title=\"CarPlay Setup\" note=\"Live display selection and the selected vehicle view's navigation settings\" />\n              {liveContent}\n              <Row label=\"Editing view\"",
+      "after": "              <Group title=\"Output mode\" note=\"HUD or vehicle display; independent of the chosen Controller View\" />\n              {liveContent}\n              <Group title=\"Vehicle Views\" note=\"One view selector controls CarPlay, Safe Area and Overlay sections below\" />\n              <Row label=\"Editing view\""
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              <Row label=\"Active view\">\n                <span>",
+      "after": "              <Row label=\"Active view\">\n                <span>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "                  }}>Show editing view on AltScreen</button>\n              </Row>",
+      "after": "                  }}>Show editing view on AltScreen</button>\n                <button type=\"button\" className=\"btn small\" disabled={liveCarView === null}\n                  onClick={() => { void backend.control('altscreen.view', true).then(() => backend.control('altscreen.view', false)) }}>\n                  Next Controller View\n                </button>\n              </Row>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              {draft.views[editingView] && (\n                <>\n                  <ProfileViewForm profile={draft} index={editingView} change={change} liveChange={(next) => change(next, 'url')} />",
+      "after": "              <Group title=\"CarPlay · selected View\" note=\"Settings below belong to the View selected above, not to another menu selector\" />\n              {draft.views[editingView] && (\n                <>\n                  <ProfileViewForm profile={draft} index={editingView} change={change} liveChange={(next) => change(next, 'url')} />"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              <Group title=\"Safe area\" note=\"Only the three mapped vehicle views need a declared safe area\" />",
+      "after": "              <Group title=\"Safe area · selected View\" note=\"All areas belong to the vehicle; the selected View explicitly binds one map rectangle\" />"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              {draft.views[editingView] && (\n                <ProfileSafeAreaForm profile={draft} index={editingView} change={(next) => change(next, 'descriptor')} />\n              )}",
+      "after": "              {draft.views[editingView] && (\n                <>\n                  {draft.views[editingView].area !== undefined &&\n                    draft.views.filter((v) => v.area === draft.views[editingView].area).length > 1 && (\n                    <Row label=\"Shared safe area\">\n                      <span>Also used by Views {draft.views.map((v, i) => v.area === draft.views[editingView].area && i !== editingView ? i : null).filter((i) => i !== null).join(', ')}</span>\n                      <button type=\"button\" className=\"btn small\" onClick={() => change(cloneViewArea(draft, editingView), 'descriptor')}>\n                        Make independent copy\n                      </button>\n                    </Row>\n                  )}\n                  <ProfileSafeAreaForm profile={draft} index={editingView} change={(next) => change(next, 'descriptor')} />\n                </>\n              )}"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              <Group title=\"Advanced profile\" note=\"Editable JSON, Save, Revert and Save Copy\" />",
+      "after": "              <Group title=\"Cockpit overlay · selected View\" note=\"Optional. Each View has its own inline shapes or a reusable overlay JSON file.\" />\n              {draft.views[editingView] && (\n                <>\n                  <Row label=\"Overlay source\">\n                    <Segmented label=\"Overlay source\" value={draft.views[editingView].overlay ?? ''}\n                      options={[[ '', 'Inline / None' ], ...(data?.overlays ?? []).map((o) => [o.id, o.id] as const)]}\n                      onChange={(id) => change(setViewOverlay(draft, editingView, id), 'local')} />\n                  </Row>\n                  <Row label=\"Overlay details\">\n                    <span>{draft.views[editingView].overlay\n                      ? `File: overlays/${draft.views[editingView].overlay}.json (replaces inline shapes in this View)`\n                      : `Inline: ${draft.views[editingView].shapes?.length ?? 0} shapes · no file required`}</span>\n                    <button type=\"button\" className=\"btn small\" onClick={() => void backend.open('overlays')}>\n                      Open overlays folder\n                    </button>\n                  </Row>\n                  <Row label=\"Save drawing as file\" title=\"Export this View's currently embedded shapes; blank drawings are valid for new vehicles\">\n                    <Field label=\"Overlay filename\" value={overlayName} placeholder=\"e.g. skoda-dials\"\n                      onCommit={(name) => setOverlayName(name.trim())} />\n                    <button type=\"button\" className=\"btn small\"\n                      disabled={!/^[A-Za-z0-9._-]{1,64}$/.test(overlayName)}\n                      onClick={() => {\n                        if (!overlayName) return\n                        const payload = JSON.stringify({ name: overlayName,\n                          shapes: draft.views[editingView].shapes ?? [] }, null, 2)\n                        void (async () => {\n                          const error = await backend.saveClusterOverlay(overlayName, payload)\n                          if (error) { setProblem(error); return }\n                          const list = await backend.clusterProfiles()\n                          setData(list)\n                          change(setViewOverlay(draft, editingView, overlayName), 'local')\n                          setDone(`Overlay ${overlayName}.json written and mapped to View ${editingView}`)\n                        })()\n                      }}>Export and assign</button>\n                  </Row>\n                  {draft.views[editingView].overlay && (() => {\n                    const file = data?.overlays?.find((o) => o.id === draft.views[editingView].overlay)\n                    return file ? <Row label=\"Overlay JSON\">\n                      <textarea key={file.id} aria-label=\"Overlay JSON\" className=\"profile-json\" rows={8}\n                        defaultValue={file.text} spellCheck={false}\n                        onBlur={(event) => {\n                          const source = event.currentTarget.value\n                          if (source === file.text) return\n                          void (async () => {\n                            const error = await backend.saveClusterOverlay(file.id, source)\n                            if (error) { setProblem(error); return }\n                            setData(await backend.clusterProfiles())\n                            setDone(`Overlay ${file.id}.json saved and simulator refreshed`)\n                          })()\n                        }} />\n                    </Row> : <Row><small className=\"errtext\">Overlay file not found. Reload the profile list.</small></Row>\n                  })()}\n                  <Row><small>Overlays are local simulator drawings. Their files can be edited without iPhone reconnect; changes to CarPlay view areas still require reconnect.</small></Row>\n                </>\n              )}\n              <Group title=\"Advanced profile\" note=\"One JSON document for the entire vehicle, including View bindings\" />"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "          <Row label=\"Edit\" title=\"The profile this editor changes\">\n            <Segmented label=\"Edit\" value={editing ?? ''} options={ids} onChange={(id) => open(data, id)} />\n          </Row>\n",
+      "after": "          <Row><small>Editing the entire vehicle profile: {editing ?? 'new / unsaved'}</small></Row>\n"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "disabled={!editing || editing === chosen}",
+      "after": "disabled={!editing || editing === chosen}"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "fireEvent.click(screen.getByText('JSON Editor · advanced profile management'))\n    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Edit' })).getByRole('radio', { name: 'other' }))",
+      "after": "fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Profile' })).getByRole('radio', { name: 'other' }))"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "await waitFor(() => expect(backend.saved).toEqual([{ 'altscreen.profile': '' }]))\n\n    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Edit' })).getByRole('radio', { name: 'other' }))",
+      "after": "await waitFor(() => expect(backend.saved).toEqual([{ 'altscreen.profile': '' }]))\n\n    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Profile' })).getByRole('radio', { name: 'other' }))"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": ".getByRole('radio', { name: 'View 2' }).getAttribute('aria-checked')).toBe('true')\n    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Safe-area preview' }))",
+      "after": ".getByRole('radio', { name: 'View 3' }).getAttribute('aria-checked')).toBe('true')\n    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Safe-area preview' }))"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "  // Saved, the editor stays on the view being edited rather than going back to the first.",
+      "after": "  it('creates a blank one-view vehicle, maps a reusable overlay file, and switches Controller with the same button', async () => {\n    const backend = await altscreenPage()\n    fireEvent.click(screen.getByRole('button', { name: 'New blank vehicle' }))\n    expect((screen.getByRole('textbox', { name: 'View name' }) as HTMLInputElement).value).toBe('View 0')\n    expect(screen.getByText(/1 Controller views/)).toBeTruthy()\n    const overlay = screen.getByRole('textbox', { name: 'Overlay filename' })\n    fireEvent.change(overlay, { target: { value: 'new-cluster' } })\n    fireEvent.blur(overlay)\n    fireEvent.click(screen.getByRole('button', { name: 'Export and assign' }))\n    await waitFor(() => expect(backend.overlaySaves).toHaveLength(1))\n    expect(backend.overlaySaves[0].id).toBe('new-cluster')\n    expect(JSON.parse(backend.overlaySaves[0].text).shapes).toEqual([])\n    expect(screen.getByText(/Overlay new-cluster.json written/)).toBeTruthy()\n    const text = screen.getByRole('textbox', { name: 'Profile JSON' }) as HTMLTextAreaElement\n    expect(JSON.parse(text.value).views[0].overlay).toBe('new-cluster'\n\n  })\n\n  // Saved, the editor stays on the view being edited rather than going back to the first."
+    },
+    {
+      "path": "src/test/kotlin/io/github/numberonebot/chairplay/config/ClusterProfileTest.kt",
+      "before": "    // display.zoomFactor goes to /info as zoomFactor when set (the car's build has 85), left out when not; out of range is refused.",
+      "after": "    @Test\n    fun `external overlay files map to views without modifying inline profile JSON`() {\n        val dir = Files.createTempDirectory(\"chairplay-overlays\")\n        val store = ClusterProfiles(dir)\n        val base = store.text(\"mu1440-790\")\n        val linked = base.replace(\"\\\"name\\\": \\\"View 0\\\"\", \"\\\"name\\\": \\\"View 0\\\", \\\"overlay\\\": \\\"custom-dials\\\"\")\n        assertTrue(store.save(\"linked\", linked)?.contains(\"custom-dials\") == true)\n        assertNull(store.saveOverlay(\"custom-dials\",\n            \"\"\"{\"name\":\"Custom dials\",\"shapes\":[{\"kind\":\"line\",\"x\":4,\"y\":5}]}\"\"\"))\n        assertNull(store.save(\"linked\", linked))\n        assertEquals(1, store.load(\"linked\").views[0].shapes.size)\n        assertEquals(4L, store.load(\"linked\").views[0].shapes[0][\"x\"])\n        assertTrue(store.text(\"linked\").contains(\"\\\"overlay\\\": \\\"custom-dials\\\"\"))\n        assertNotNull(store.saveOverlay(\"../escape\", \"\"\"{\"shapes\":[]}\"\"\"))\n        assertNotNull(store.saveOverlay(\"invalid\", \"\"\"{\"shapes\":[42]}\"\"\"))\n    }\n\n    // display.zoomFactor goes to /info as zoomFactor when set (the car's build has 85), left out when not; out of range is refused."
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "  const previewArea = (activeMapIndex >= 0 ? draft?.views[activeMapIndex]?.area : undefined)\n    ?? draft?.views[editingView]?.area",
+      "after": "  // Preview follows the edited View, not a different live Controller view; overlay-only\n  // Views make their inherited map rectangle explicit without pretending to own an iOS view area.\n  const previewArea = draft?.views[editingView]?.area\n    ?? (draft && draft.views.length > 0\n      ? draft.views[mapViewIndex(draft, editingView)]?.area : undefined)"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "options={[[ 'all', 'All areas' ], [ 'active', 'Active area' ]]}",
+      "after": "options={[[ 'all', 'All areas' ], [ 'active', 'Selected area' ]]}"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "<Row><small>Active-area preview follows the Controller; when disconnected it uses the edited view. Overlay-only Views 3/4 retain the previous map view.</small></Row>",
+      "after": "<Row><small>The selected area is taken from the edited View. Overlay-only Views inherit their map source; selecting another View does not secretly change the active Controller.</small></Row>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "getByRole('radio', { name: 'Active area' })",
+      "after": "getByRole('radio', { name: 'Selected area' })"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/Screenshot.kt",
+      "before": "            val views = (profile?.get(\"views\") as? List<*>).orEmpty()\n            val actual = viewIndex?.takeIf { it in views.indices }",
+      "after": "            val views = (profile?.get(\"views\") as? List<*>).orEmpty()\n            val overlayFiles = views.mapNotNull { (it as? Map<*, *>)?.get(\"overlay\") as? String }\n                .distinct().sorted().associateWith { overlay ->\n                    runCatching { Json.parse(ClusterProfiles(dir).overlayText(overlay)) }\n                        .getOrElse { mapOf(\"unavailable\" to (it.message ?: \"not found\")) }\n                }\n            val actual = viewIndex?.takeIf { it in views.indices }"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/Screenshot.kt",
+      "before": "                \"controllerViewName\" to selected?.get(\"name\"),\n                \"mapView\" to mapIndex,",
+      "after": "                \"controllerViewName\" to selected?.get(\"name\"),\n                \"controllerOverlayFile\" to selected?.get(\"overlay\"),\n                \"controllerInlineShapes\" to selected?.get(\"shapes\"),\n                \"mapView\" to mapIndex,"
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/media/Screenshot.kt",
+      "before": "                \"profileFullJson\" to profile,\n                \"note\" to \"Saved configuration at capture request; iPhone may still use earlier descriptor until reconnect\",",
+      "after": "                \"profileFullJson\" to profile,\n                \"overlayFiles\" to overlayFiles,\n                \"note\" to \"Saved configuration at capture request; iPhone may still use earlier descriptor until reconnect\","
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              {draft.views[editingView] && (\n                <>\n                  <ProfileViewForm profile={draft} index={editingView} change={change} liveChange={(next) => change(next, 'url')} />",
+      "after": "              {draft.views[editingView] && (\n                <>\n                  {draft.views[editingView].area === undefined && (\n                    <Row label=\"Inherited map source\">\n                      <span>View {mapViewIndex(draft, editingView)} · its CarPlay URL and safe area remain active under this overlay</span>\n                      <button type=\"button\" className=\"btn small\"\n                        onClick={() => {\n                          setFollowController(false)\n                          setView(mapViewIndex(draft, editingView))\n                        }}>Edit map source</button>\n                    </Row>\n                  )}\n                  <ProfileViewForm profile={draft} index={editingView} change={change} liveChange={(next) => change(next, 'url')} />"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "<small>{editing === chosen && activeMapIndex === editingView\n                      ? 'Live settings target the map view currently shown by the Controller.'\n                      : 'Editing a different view: saved changes take effect when that view becomes active.'}",
+      "after": "<small>{editing === chosen && liveCarView === editingView\n                      ? (draft.views[editingView]?.area === undefined\n                        ? 'This Controller View is active. Its custom overlay is independent; the inherited map URL comes from the source View shown above.'\n                        : 'This is the active Controller View: changes to its CarPlay options request a live URL.')\n                      : 'Editing an inactive View: its changes apply when that View becomes active.'}"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "<Row><small>The selected area is taken from the edited View. Overlay-only Views inherit their map source; selecting another View does not secretly change the active Controller.</small></Row>",
+      "after": "<Row><small>The selected area follows the edited View; overlay-only Views inherit the safe area of their map source. Editing a View does not silently activate it on the Controller.</small></Row>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Profile' })).getByRole('radio', { name: 'other' }))\n    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))\n    await waitFor(() => expect(backend.profileSaves).toEqual([{ id: 'other', text: null }]))",
+      "after": "    // With one selector the active profile is also the editable one. Deselect it before deleting.\n    await waitFor(() => expect((screen.getByRole('button', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(false))\n    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))\n    await waitFor(() => expect(backend.profileSaves).toEqual([{ id: 'car', text: null }]))"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "expect(JSON.parse(text.value).views[0].overlay).toBe('new-cluster'\n",
+      "after": "expect(JSON.parse(text.value).views[0].overlay).toBe('new-cluster')\n"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "expect(screen.getByText('CarPlay Setup')).toBeTruthy()",
+      "after": "expect(screen.getByText('CarPlay · selected View')).toBeTruthy()"
+    }
+  ]
+}
