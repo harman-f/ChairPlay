@@ -1,0 +1,344 @@
+diff --git a/webui/src/pages/parts.tsx b/webui/src/pages/parts.tsx
+--- a/webui/src/pages/parts.tsx
++++ b/webui/src/pages/parts.tsx
+@@ -1,6 +1,6 @@
+ // What the settings pages build their rows from, bound to the shared settings: a field and a segmented choice that
+ // save their key, the note a group's header gives, and the safe-area cross.
+-import type { ReactNode } from 'react'
++import { useState, type ReactNode } from 'react'
+ import type { AppState, Backend, PictureWindow, WindowSizes } from '../api'
+ import { Row, Segmented, type Choice } from '../shell/controls'
+ import { Field } from '../shell/fields'
+@@ -98,8 +98,11 @@
+   after?: ReactNode
+   /** To mark a changed size. */
+   pending?: Pending
++  /** Show an explicit Custom choice; the editable fields remain below. */
++  showCustom?: boolean
+ }) {
+   const { settings, prefix, fallback } = props
++  const [customSelected, setCustomSelected] = useState(false)
+   const { field } = parts(settings)
+   const [widthKey, heightKey] = [`${prefix}.width`, `${prefix}.height`]
+   const width = settings.value(widthKey) || String(fallback.width)
+@@ -111,9 +114,11 @@
+         <Segmented
+           label="Size"
+           columns={props.columns}
+-          value={refused ? '' : `${width}x${height}`}
+-          options={props.presets.map(([w, h]) => [`${w}x${h}`, `${w}×${h}`])}
++          value={refused ? '' : props.showCustom && (customSelected || !props.presets.some(([w, h]) => `${w}x${h}` === `${width}x${height}`)) ? 'custom' : `${width}x${height}`}
++          options={[...props.presets.map(([w, h]) => [`${w}x${h}`, `${w}×${h}`] as const), ...(props.showCustom ? [['custom', 'Custom'] as const] : [])]}
+           onChange={(preset) => {
++            if (preset === 'custom') { setCustomSelected(true); return }
++            setCustomSelected(false)
+             const [presetWidth, presetHeight] = preset.split('x')
+             settings.save({ [widthKey]: presetWidth, [heightKey]: presetHeight })
+           }}
+diff --git a/webui/src/pages/CarProfile.tsx b/webui/src/pages/CarProfile.tsx
+--- a/webui/src/pages/CarProfile.tsx
++++ b/webui/src/pages/CarProfile.tsx
+@@ -2,6 +2,7 @@
+ import type { Backend, ClusterProfilesData } from '../api'
+ import { Group, Row, Segmented, type Choice } from '../shell/controls'
+ import { Field } from '../shell/fields'
++import { ActualSize, SizeRows } from './parts'
+ import type { Settings } from '../shell/useSettings'
+ import { addView, removeView, setDisplay, setZoomFactor, type Profile } from './profileEdits'
+ import { ProfileViewForm } from './ProfileViewForm'
+@@ -16,6 +17,11 @@
+   ['150', '150 %'],
+ ]
+ 
++const PHYSICAL_ZOOMS: readonly Choice[] = [
++  ['70', '70 %'], ['85', '85 %'], ['100', '100 %'], ['125', '125 %'], ['150', '150 %'],
++]
++const FRAME_PRESETS = [[1280, 480], [1440, 540], [1600, 600], [1920, 720]] as const
++
+ /** The profile's text read, or why not. */
+ function parse(text: string): { profile?: Profile; error?: string } {
+   try {
+@@ -35,7 +41,7 @@
+  * removed, and its whole JSON, the schematic's shapes among it. Save keeps it; the one in use takes its schematic and
+  * URLs at once, its frame and areas at the next connection. Save as copies it under a new name.
+  */
+-export function CarProfile({ backend, settings }: { backend: Backend; settings: Settings }) {
++export function CarProfile({ backend, settings, canReconnect, altScreenWindow }: { backend: Backend; settings: Settings; canReconnect: boolean; altScreenWindow: Parameters<typeof ActualSize>[0]['sizes'] }) {
+   const [data, setData] = useState<ClusterProfilesData | null>(null)
+   const [editing, setEditing] = useState<string | null>(null)
+   const [draft, setDraft] = useState<Profile | null>(null)
+@@ -72,14 +78,14 @@
+     // Read once as the page opens; Reload reads again.
+   }, [reload])
+ 
+-  function change(next: Profile, live = false) {
++  function change(next: Profile, mode: 'url' | 'descriptor' | null = null) {
+     setDraft(next)
+     const nextText = JSON.stringify(next, null, 2)
+     setText(nextText)
+     setDone(null)
+     // URL-only view options apply immediately for the selected active profile.
+     // Serialize writes so two rapid switches cannot land out of order.
+-    if (live && editing && editing === chosen) {
++    if (mode && editing && editing === chosen) {
+       const id = editing
+       pendingLive.current = pendingLive.current.catch(() => {}).then(async () => {
+         try {
+@@ -87,7 +93,7 @@
+           if (error) setProblem(error)
+           else {
+             setProblem(null)
+-            setDone('Saved active view: live iPhone URL requested')
++            setDone(mode === 'url' ? 'Saved active view: live iPhone URL requested' : 'Display settings saved; reconnect required')
+           }
+         } catch (error) {
+           setProblem(`Live profile update failed: ${String(error)}`)
+@@ -113,8 +119,30 @@
+   const display = draft?.display
+   const editDisplay = (key: 'width' | 'height' | 'widthMm' | 'heightMm', value: string) => {
+     const n = Number(value.trim())
+-    if (draft && Number.isInteger(n) && n > 0) change(setDisplay(draft, key, n))
++    if (draft && Number.isInteger(n) && n > 0) change(setDisplay(draft, key, n), 'descriptor')
+   }
++  const profileSizeSettings: Settings = {
++    ...settings,
++    value: (key) => key === 'altscreen.width' && display ? String(display.width)
++      : key === 'altscreen.height' && display ? String(display.height) : settings.value(key),
++    error: (key) => key === 'altscreen.width' || key === 'altscreen.height' ? undefined : settings.error(key),
++    save: async (changes) => {
++      if (!draft || !display) return false
++      const width = Number(changes['altscreen.width'] ?? display.width)
++      const height = Number(changes['altscreen.height'] ?? display.height)
++      if (!Number.isInteger(width) || !Number.isInteger(height) || width < 2 || height < 2 || width % 2 || height % 2) {
++        setProblem('Resolution must contain positive even pixel numbers')
++        return false
++      }
++      change({ ...draft, display: { ...display, width, height,
++        heightMm: Math.max(1, Math.round(display.widthMm * height / width)) } }, 'descriptor')
++      return true
++    },
++  }
++  const physicalZoom = display?.physicalZoom ?? 100
++  const effectiveWidth = display ? Math.max(1, Math.round(display.widthMm * 100 / physicalZoom)) : 0
++  const effectiveHeight = display ? Math.max(1, Math.round(display.heightMm * 100 / physicalZoom)) : 0
++
+   return (
+     <>
+       <Group title="Car profile" note="The car's cluster as its head unit declares it, with its views and schematic" />
+@@ -153,29 +181,39 @@
+               <Row label="Name">
+                 <Field label="Name" value={draft.name ?? ''} onCommit={(t) => change({ ...draft, name: t.trim() })} />
+               </Row>
+-              <Row label="Frame" title="The cluster stream's size in pixels">
+-                <Field label="Width" className="n" value={String(display.width)} onCommit={(t) => editDisplay('width', t)} />
+-                <span className="unit">×</span>
+-                <Field label="Height" className="n" value={String(display.height)} onCommit={(t) => editDisplay('height', t)} />
+-                <span className="unit">px</span>
+-              </Row>
+-              <Row label="Physical size" title="The size the iPhone sizes its cluster UI by: larger draws everything smaller. Each side follows the other in the shape of the frame">
+-                <Field label="Width in mm" className="n" value={String(display.widthMm)} onCommit={(t) => editDisplay('widthMm', t)} />
+-                <span className="unit">×</span>
+-                <Field label="Height in mm" className="n" value={String(display.heightMm)} onCommit={(t) => editDisplay('heightMm', t)} />
+-                <span className="unit">mm</span>
+-              </Row>
+-              <Row
+-                label="Zoom factor"
+-                title="The iPhone's display scale for the cluster (iOS 26 Smart Display Zoom, zoomFactor); Auto sends none. Another value can go in the JSON"
+-              >
+-                <Segmented
+-                  label="Zoom factor"
+-                  value={display.zoomFactor === undefined ? '' : String(display.zoomFactor)}
+-                  options={ZOOM}
+-                  onChange={(v) => change(setZoomFactor(draft, v))}
+-                />
+-              </Row>
++              {editing === chosen && Boolean(chosen) && (
++                <>
++                  <Group title="Manual setup" note="The selected profile controls the iPhone's cluster display" />
++                  <SizeRows settings={profileSizeSettings} prefix="altscreen" presets={FRAME_PRESETS}
++                    fallback={{ width: 1010, height: 376 }} showCustom after={<ActualSize sizes={altScreenWindow} window="altscreen" backend={backend} />} />
++                  <Row label="Physical size" title="Calibrated physical reference size; scaling below does not alter this baseline">
++                    <Field label="Physical width" className="n" value={String(display.widthMm)} onCommit={(t) => editDisplay('widthMm', t)} />
++                    <span className="unit">×</span>
++                    <Field label="Physical height" className="n" value={String(display.heightMm)} onCommit={(t) => editDisplay('heightMm', t)} />
++                    <span className="unit">mm</span>
++                  </Row>
++                  <Group title="Scaling" note="Both scaling methods may be combined" />
++                  <Row label="Zoom factor" title="iOS Smart Display zoomFactor. Auto omits this property.">
++                    <Segmented label="Zoom factor" value={display.zoomFactor === undefined ? '' : String(display.zoomFactor)}
++                      options={ZOOM} onChange={(v) => change(setZoomFactor(draft, v), 'descriptor')} />
++                  </Row>
++                  <Row label="Physical zoom" title="Adjusts the physical millimetres advertised to iOS; 100% preserves the reference size">
++                    <Segmented label="Physical zoom" value={String(physicalZoom)} options={PHYSICAL_ZOOMS}
++                      onChange={(v) => change({ ...draft, display: { ...display, physicalZoom: Number(v) } }, 'descriptor')} />
++                  </Row>
++                  <Row label="Effective size">
++                    <span>{effectiveWidth} × {effectiveHeight} mm (reported to iOS)</span>
++                  </Row>
++                  <Row>
++                    <span className="hint">Resolution, physical size and both zoom settings apply after CarPlay reconnect.</span>
++                    <button type="button" className="btn small" disabled={!canReconnect}
++                      title="End this CarPlay session and renegotiate the updated cluster display"
++                      onClick={() => void pendingLive.current.then(() => backend.reconnect())}>
++                      Reconnect CarPlay
++                    </button>
++                  </Row>
++                </>
++              )}
+               <Row label="Car view" title="The car's views, in the order its View button steps through them">
+                 <Segmented label="Car view" value={String(view)} options={views} onChange={(v) => setView(Number(v))} />
+               </Row>
+@@ -200,7 +238,7 @@
+               </Row>
+               {draft.views[view] && (
+                 <>
+-                  <ProfileViewForm profile={draft} index={view} change={change} liveChange={(next) => change(next, true)} />
++                  <ProfileViewForm profile={draft} index={view} change={change} liveChange={(next) => change(next, 'url')} />
+                   <Row>
+                     <small>Scene, ETA, speed limit, compass and turn card apply immediately when editing the active profile. Navigation apps may ignore unsupported requests. Frame, safe area and native scale still require reconnect.</small>
+                   </Row>
+diff --git a/webui/src/pages/AltScreenPage.tsx b/webui/src/pages/AltScreenPage.tsx
+--- a/webui/src/pages/AltScreenPage.tsx
++++ b/webui/src/pages/AltScreenPage.tsx
+@@ -79,7 +79,9 @@
+       </Row>
+       {/* Off, the AltScreen has nothing to set: the rest waits for it. */}
+       <div className={off ? 'held' : undefined} inert={off} title={off ? 'Turn on the AltScreen to set it' : undefined}>
+-        <CarProfile backend={backend} settings={settings} />
++        <CarProfile backend={backend} settings={settings} canReconnect={state.canShowCarPlay} altScreenWindow={state.altscreenWindow} />
++        {!settings.value('altscreen.profile') && (
++          <>
+         <Group title="Manual setup" note={settings.value('altscreen.profile') ? 'A car profile sets the size and areas' : undefined} />
+         <SizeRows
+           settings={settings}
+@@ -88,12 +90,15 @@
+           fallback={ALTSCREEN_FALLBACK}
+           after={<ActualSize sizes={state.altscreenWindow} window="altscreen" backend={backend} />}
+           pending={pending}
++          showCustom
+         />
+         <Row className="hint-row">
+           <span className="hint">
+             Most instrument clusters have an 8:3 aspect ratio, so the area presets below split the width into eighths
+           </span>
+         </Row>
++          </>
++        )}
+         <AlwaysOnTop settings={settings} setting="altscreen.always.on.top" />
+         <Group title="Appearance" />
+         <Row
+diff --git a/webui/src/pages/profileEdits.ts b/webui/src/pages/profileEdits.ts
+--- a/webui/src/pages/profileEdits.ts
++++ b/webui/src/pages/profileEdits.ts
+@@ -14,7 +14,7 @@
+ 
+ export interface Profile {
+   name?: string
+-  display: { width: number; height: number; widthMm: number; heightMm: number; fps?: number; features?: number; primaryInputDevice?: number; zoomFactor?: number }
++  display: { width: number; height: number; widthMm: number; heightMm: number; fps?: number; features?: number; primaryInputDevice?: number; zoomFactor?: number; physicalZoom?: number }
+   /** Each view area's safe area: x, y, width, height. */
+   areas: number[][]
+   initialView?: number
+diff --git a/src/main/kotlin/io/github/numberonebot/chairplay/config/ClusterProfile.kt b/src/main/kotlin/io/github/numberonebot/chairplay/config/ClusterProfile.kt
+--- a/src/main/kotlin/io/github/numberonebot/chairplay/config/ClusterProfile.kt
++++ b/src/main/kotlin/io/github/numberonebot/chairplay/config/ClusterProfile.kt
+@@ -57,11 +57,19 @@
+     val shapes: List<Shape> = emptyList(),
+     /** The iPhone's display scale (iOS 26 Smart Display Zoom) in percent, as zoomFactor; null leaves the key out. */
+     val zoomFactor: Int? = null,
++    /** Independent physical-mm zoom percent; 100 keeps the original calibrated dimensions. */
++    val physicalZoom: Int = 100,
+ ) {
++    private val effectivePhysicalMm: WindowSize get() = WindowSize(
++        Math.round(physicalMm.width * 100.0 / physicalZoom).toInt().coerceAtLeast(1),
++        Math.round(physicalMm.height * 100.0 / physicalZoom).toInt().coerceAtLeast(1),
++    )
++
+     init {
+         require(views.isNotEmpty()) { "$id has no views" }
+         require(views.any { it.hasMap }) { "$id has no view with the map" }
+         zoomFactor?.let { require(it in 25..400) { "$id: zoomFactor must be a percentage from 25 to 400, not $it" } }
++        require(physicalZoom in 25..400) { "$id: physicalZoom must be a percentage from 25 to 400, not $physicalZoom" }
+         views.forEach { view ->
+             view.area?.let { require(it in safeAreas.indices) { "$id: ${view.name} shows in area $it, which is not there" } }
+             require(view.scene in ClusterView.SCENES) { "$id: ${view.name}'s scene must be ${ClusterView.SCENES.joinToString(" or ")}" }
+@@ -97,8 +105,8 @@
+ 
+     /** The cluster display as ChairPlay's config holds it; [displayEntry] replaces what /info makes of it. */
+     fun display(): AirPlayDisplayConfig = AirPlayDisplayConfig(
+-        widthPixels = size.width, heightPixels = size.height, widthPhysicalMm = physicalMm.width,
+-        heightPhysicalMm = physicalMm.height, fps = fps, primaryInputDevice = primaryInputDevice, features = features,
++        widthPixels = size.width, heightPixels = size.height, widthPhysicalMm = effectivePhysicalMm.width,
++        heightPhysicalMm = effectivePhysicalMm.height, fps = fps, primaryInputDevice = primaryInputDevice, features = features,
+         initialUrl = firstMapView.url, viewAreas = areas, initialViewArea = initialArea,
+     )
+ 
+@@ -112,8 +120,8 @@
+         "maxFPS" to fps,
+         "widthPixels" to size.width,
+         "heightPixels" to size.height,
+-        "widthPhysical" to physicalMm.width,
+-        "heightPhysical" to physicalMm.height,
++        "widthPhysical" to effectivePhysicalMm.width,
++        "heightPhysical" to effectivePhysicalMm.height,
+         "features" to features,
+         "primaryInputDevice" to primaryInputDevice,
+         "initialViewArea" to initialArea,
+@@ -162,6 +170,7 @@
+                 WindowSize(display.int("widthMm"), display.int("heightMm")), display.int("fps", 30), display.int("features", 10),
+                 display.int("primaryInputDevice", 3), areas, views, root.int("initialView", 0), shapes(root),
+                 (display["zoomFactor"] as? Number)?.toInt(),
++                display.int("physicalZoom", 100),
+             )
+         }
+ 
+diff --git a/src/test/kotlin/io/github/numberonebot/chairplay/config/ClusterProfileTest.kt b/src/test/kotlin/io/github/numberonebot/chairplay/config/ClusterProfileTest.kt
+--- a/src/test/kotlin/io/github/numberonebot/chairplay/config/ClusterProfileTest.kt
++++ b/src/test/kotlin/io/github/numberonebot/chairplay/config/ClusterProfileTest.kt
+@@ -96,6 +96,23 @@
+         }
+     }
+ 
++    // The two scaling methods must compose: the iOS zoomFactor is sent unchanged while effective mm change.
++    @Test
++    fun `physical zoom changes the advertised millimetres without overriding iOS zoomFactor`() {
++        val source = ClusterProfiles.builtIn("mu1440-790")!!
++        val scaled = ClusterProfile.parse("scaled", source.replace("\"zoomFactor\": 85", "\"zoomFactor\": 125, \"physicalZoom\": 125"))
++        val entry = scaled.displayEntry()
++        assertEquals(125, entry["zoomFactor"])
++        assertEquals(240, entry["widthPhysical"])
++        assertEquals(90, entry["heightPhysical"])
++        assertEquals(240, scaled.display().widthPhysicalMm)
++        assertEquals(90, scaled.display().heightPhysicalMm)
++        assertEquals(300, builtIn.displayEntry()["widthPhysical"])
++        assertThrows(IllegalArgumentException::class.java) {
++            ClusterProfile.parse("wrong", source.replace("\"zoomFactor\": 85", "\"zoomFactor\": 85, \"physicalZoom\": 0"))
++        }
++    }
++
+     // /info's cluster display is the profile's, the main screen untouched; without a profile nothing changes.
+     @Test
+     fun `advertise replaces the cluster display only`() {
+diff --git a/webui/src/pages/CarProfile.test.tsx b/webui/src/pages/CarProfile.test.tsx
+--- a/webui/src/pages/CarProfile.test.tsx
++++ b/webui/src/pages/CarProfile.test.tsx
+@@ -55,6 +55,19 @@
+     expect(backend.profileSaves).toHaveLength(1)
+   })
+ 
++  it('combines iOS zoomFactor and physical zoom and reconnects through the original backend', async () => {
++    const backend = await altscreenPage()
++    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Physical zoom' })).getByRole('radio', { name: '125 %' }))
++    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Zoom factor' })).getByRole('radio', { name: '85 %' }))
++    await waitFor(() => expect(backend.profileSaves).toHaveLength(2))
++    const saved = JSON.parse(backend.profileSaves[1].text!)
++    expect(saved.display.physicalZoom).toBe(125)
++    expect(saved.display.zoomFactor).toBe(85)
++    expect(screen.getByText('240 × 90 mm (reported to iOS)')).toBeTruthy()
++    fireEvent.click(screen.getByRole('button', { name: 'Reconnect CarPlay' }))
++    await waitFor(() => expect(backend.reconnects).toBe(1))
++  })
++
+   // Saved, the editor stays on the view being edited rather than going back to the first.
+   it('stays on the view being edited after a save', async () => {
+     const backend = await altscreenPage()
