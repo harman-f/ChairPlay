@@ -24,6 +24,23 @@ Listen to music, use navigation, take calls and talk to Siri through your PC's s
 
 Useful for building and testing CarPlay apps and navigation without a car, for demos, or just CarPlay on a desk.
 
+> [!IMPORTANT]
+> **MIB2 / Škoda Virtual Cockpit evaluation fork — work in progress.** This repository was forked from [zakklmv/ChairPlay](https://github.com/zakklmv/ChairPlay), based on the original [NumberOneBot/ChairPlay](https://github.com/NumberOneBot/ChairPlay). The objective is to reproduce real-world MIB2 High CarPlay display geometry, Vehicle Views, safe areas and instrument-cluster navigation overlays on Windows, initially for Škoda AID10/Virtual Cockpit and eventually other VW Group vehicle profiles. This makes UI iteration and comparison easier than repeated testing in the vehicle. **Do not mistake this main branch for the combined PR #184 Windows build:** UI/VC source patches are still being ported, and device validation remains outstanding.
+
+## About this fork
+
+This is an independent experimental development variant, not an official ChairPlay release. Its focus is high-fidelity desktop reconstruction of the vehicle's different CarPlay display and cluster presentation modes, including full, center and wide views. The intended workflow is to configure display dimensions, physical scaling and safe areas, compare actual iPhone output and cluster overlays, then capture repeatable screenshots. Current research uses a Škoda MHI2 High / Virtual Cockpit as its first target; broader VW Group support is a goal, **not a verified compatibility claim**.
+
+**Status (2026-11-09):** The original upstream ChairPlay source is present on this branch. Authenticated screenshot automation, its offline tests and API draft have been imported from [M.I.B. Research PR #184](https://github.com/CaneTLOTW/M.I.B._Research/pull/184), along with the last guarded geometry-patch script for integration. These imports **do not include the full layered UI, VC runtime or Live-Lab patch chain**; the previous [successful research CI build](https://github.com/CaneTLOTW/M.I.B._Research/actions/runs/42532826506) validated a *separate* pinned Build-44/JAR overlay, not this fork. The new fork still needs a full source integration and its own CI pass. Local iPhone/vehicle correlation is pending. Experimental facilities must be opt-in and disabled by default.
+
+**Included development files:** [Luna screenshot runner](automation/luna_capture.py) · [offline tests](automation/test_luna_capture.py) · [local API notes](docs/CHAIRPLAY_LOCAL_AUTOMATION_API.md) · [pending UI geometry patch](contrib/mib2-skoda/patches/finalize-geometry-luna.py). The geometry script is an input to the patch chain, not an automatically applied runtime feature.
+
+**Screenshots:** Actual application screenshots of Vehicle Profiles, Display Geometry, Vehicle Views, Safe Areas, scaling and Skoda Full / Center / Wide layouts will be added here after manual testing. Until then, the original ChairPlay example below remains an *upstream illustration*, not evidence of this fork's modified cockpit UI.
+
+**Thanks and attribution:** A special thank you to **[Alex Strelets / NumberOneBot](https://github.com/NumberOneBot/ChairPlay)** for creating ChairPlay and releasing its substantial Windows CarPlay implementation. Thank you also to **[zakklmv](https://github.com/zakklmv/ChairPlay)** for the intermediate fork and initial Skoda-oriented instrument-cluster/overlay adaptation used as our development starting point. Thanks to the DiPlay, xcertplay, LIVI and LuKa contributors credited in the original project. Original copyright/licence notices, GPL-3.0 and bundled third-party notices remain applicable. This fork is unaffiliated with Apple, the vehicle manufacturers, or upstream developers.
+
+---
+
 ## What you need
 
 - **An iPhone** with CarPlay.
@@ -87,9 +104,9 @@ Click to touch, use **Arrow keys** to move the focus, **Enter** or **Space** to 
 
 </details>
 
-## Support the project
+## Support the original project
 
-ChairPlay is a hobby project I build and test on real hardware in my spare time. It’s free and fully open source under GPL-3.0, and donations are the only way I earn anything from this work. If it saves you a trip to the car, helps you build CarPlay apps, or makes your desk a little more fun, you can buy me a coffee.
+The original ChairPlay is a free GPL-3.0 hobby project by Alex Strelets. The following donation link belongs to the **original ChairPlay developer**, not the maintainer of this fork. Please consider supporting their work.
 
 <p align="center">
   <a href="https://www.buymeacoffee.com/alexstrelets"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="217"></a>
@@ -105,7 +122,7 @@ ChairPlay is a hobby project I build and test on real hardware in my spare time.
 
 ## Report a problem
 
-Open an [issue](https://github.com/NumberOneBot/ChairPlay/issues/new): About → **Report a problem** fills in the version for you. For a connection problem, set **Log level** to **Info** on the Experiments page, try again, and attach the log: the **Logs** button on that page opens its folder. ChairPlay keeps your Wi-Fi password out of the log, but look it over before sending.
+For **fork-specific MIB2 / Skoda evaluation issues**, use [harman-f/ChairPlay issues](https://github.com/harman-f/ChairPlay/issues). For original ChairPlay issues, use [NumberOneBot/ChairPlay issues](https://github.com/NumberOneBot/ChairPlay/issues). In the original app, About → **Report a problem** may lead to the upstream issue tracker. For a connection problem, set **Log level** to **Info** on the Experiments page, try again, and attach the log: the **Logs** button on that page opens its folder. ChairPlay keeps your Wi-Fi password out of the log, but look it over before sending.
 
 Ideas and fixes are welcome too: open an issue or a pull request, or write to me at [alex.strelets@gmail.com](mailto:alex.strelets@gmail.com).
 
@@ -114,7 +131,7 @@ Ideas and fixes are welcome too: open an issue or a pull request, or write to me
 You need JDK 17; the build downloads the rest.
 
 ```
-git clone --recursive https://github.com/NumberOneBot/ChairPlay.git
+git clone --recursive https://github.com/harman-f/ChairPlay.git
 cd ChairPlay
 gradlew deploy
 ```
