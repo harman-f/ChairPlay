@@ -1,0 +1,154 @@
+{
+  "upstreamRevision": "fd7a22fa1f503695309ec9efad0e48b2d900349f",
+  "appliesAfter": [
+    "apply-live-profile-patch.ps1",
+    "manual-scaling-v1.patch"
+  ],
+  "operations": [
+    {
+      "path": "webui/src/pages/ProfileViewForm.tsx",
+      "before": "  const edge = (i: number, label: string) => (\n    <>\n      <Field\n        label={`Safe area ${label}`}\n        className=\"n\"\n        value={String(area![i])}\n        onCommit={(text) => {\n          const n = whole(text)\n          if (n === null || n < 0) return 'A whole number of 0 or more'\n          const rect = [...area!]\n          rect[i] = n\n          change(setSafeArea(profile, index, rect))\n        }}\n      />\n      <span className=\"unit\">{label}</span>\n    </>\n  )\n",
+      "after": ""
+    },
+    {
+      "path": "webui/src/pages/ProfileViewForm.tsx",
+      "before": "          <Row label=\"Safe area\" title=\"Where the iPhone lays out the map's car and text, in the frame's pixels\">\n            {edge(0, 'x')}\n            {edge(1, 'y')}\n          </Row>\n          <Row label=\"Safe size\">\n            {edge(2, 'width')}\n            {edge(3, 'height')}\n          </Row>\n",
+      "after": ""
+    },
+    {
+      "path": "webui/src/pages/ProfileViewForm.tsx",
+      "before": "    </>\n  )\n}\n",
+      "after": "    </>\n  )\n}\n\n/** Profile-specific rectangle, kept with the selected car view instead of the navigation URL controls. */\nexport function ProfileSafeAreaForm({ profile, index, change }: { profile: Profile; index: number; change: (p: Profile) => void }) {\n  const view = profile.views[index]\n  if (view.area === undefined) {\n    return <Row><small>This view covers the map with its overlay. It retains the preceding map view's area.</small></Row>\n  }\n  const area = profile.areas[view.area]\n  if (!area) return <Row><small>Invalid area reference: {view.area}</small></Row>\n  const edge = (i: number, label: string) => (\n    <>\n      <Field label={`Safe area ${label}`} className=\"n\" value={String(area[i])} onCommit={(value) => {\n        const number = whole(value)\n        if (number === null || number < 0) return 'A whole number of 0 or more'\n        const updated = [...area]\n        updated[i] = number\n        const [x, y, width, height] = updated\n        if (width <= 0 || height <= 0 || x + width > profile.display.width || y + height > profile.display.height)\n          return 'The rectangle must fit inside the display'\n        change(setSafeArea(profile, index, updated))\n      }} />\n      <span className=\"unit\">{label}</span>\n    </>\n  )\n  const [x, y, width, height] = area\n  return (\n    <>\n      <Row label=\"Area index\"><span>{view.area} (selected view: {view.name ?? `View ${index}`})</span></Row>\n      <Row label=\"Safe area\" title=\"Map rectangle in the display's pixel coordinates\">\n        {edge(0, 'x')}{edge(1, 'y')}\n      </Row>\n      <Row label=\"Safe size\">\n        {edge(2, 'width')}{edge(3, 'height')}\n      </Row>\n      <Row label=\"Computed insets\">\n        <span>Left {x} · Top {y} · Right {profile.display.width - x - width} · Bottom {profile.display.height - y - height} px</span>\n      </Row>\n      <Row className=\"hint-row\"><small>View geometry is negotiated on CarPlay reconnect. Views sharing an area index share this rectangle.</small></Row>\n    </>\n  )\n}\n"
+    },
+    {
+      "path": "webui/src/pages/parts.tsx",
+      "before": "      <Row>\n        {field(widthKey, 'Width', String(fallback.width), 'short c')}",
+      "after": "      <Row label={props.showCustom ? 'Custom Size' : undefined}>\n        {field(widthKey, 'Width', String(fallback.width), 'short c')}"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "import { useCallback, useEffect, useRef, useState } from 'react'",
+      "after": "import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "import { ProfileViewForm } from './ProfileViewForm'",
+      "after": "import { ProfileViewForm, ProfileSafeAreaForm } from './ProfileViewForm'"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "  ['70', '70 %'], ['85', '85 %'], ['100', '100 %'], ['125', '125 %'], ['150', '150 %'],",
+      "after": "  ['50', '50 %'], ['70', '70 %'], ['85', '85 %'], ['100', '100 %'], ['125', '125 %'], ['150', '150 %'],"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "export function CarProfile({ backend, settings, canReconnect, altScreenWindow }: { backend: Backend; settings: Settings; canReconnect: boolean; altScreenWindow: Parameters<typeof ActualSize>[0]['sizes'] }) {",
+      "after": "export function CarProfile({ backend, settings, canReconnect, altScreenWindow, liveContent, windowControls, nativeInsets }: {\n  backend: Backend; settings: Settings; canReconnect: boolean;\n  altScreenWindow: Parameters<typeof ActualSize>[0]['sizes'];\n  liveContent: ReactNode; windowControls: ReactNode; nativeInsets: ReactNode\n}) {"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "  const editDisplay = (key: 'width' | 'height' | 'widthMm' | 'heightMm', value: string) => {\n    const n = Number(value.trim())\n    if (draft && Number.isInteger(n) && n > 0) change(setDisplay(draft, key, n), 'descriptor')\n  }\n",
+      "after": "  const editDisplay = (key: 'width' | 'height' | 'widthMm' | 'heightMm' | 'fps', value: string) => {\n    const n = Number(value.trim())\n    if (!draft || !Number.isInteger(n)) return 'Enter a whole number'\n    if (key === 'fps') {\n      if (n < 1 || n > 120) return 'FPS must be between 1 and 120'\n      change({ ...draft, display: { ...draft.display, fps: n } }, 'descriptor')\n    } else if (n > 0) change(setDisplay(draft, key, n), 'descriptor')\n    else return 'Enter a positive number'\n  }\n"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "          <Group title={`Edit ${editing ?? ''}`} note={done ?? undefined} />\n          <Row label=\"Edit\" title=\"The profile this editor changes\">\n            <Segmented label=\"Edit\" value={editing ?? ''} options={ids} onChange={(id) => open(data, id)} />\n          </Row>\n",
+      "after": "          {done && <Row><small>{done}</small></Row>}\n"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "          <Row label=\"JSON\" title=\"The whole profile, the schematic's shapes among it; leave the field to apply it\">\n            <textarea\n              aria-label=\"Profile JSON\"\n              className=\"profile-json\"\n              rows={12}\n              spellCheck={false}\n              value={text}\n              onChange={(event) => setText(event.target.value)}\n              onBlur={() => {\n                const read = parse(text)\n                setProblem(read.error ?? null)\n                if (read.profile) setDraft(read.profile)\n              }}\n            />\n          </Row>\n          <Row>\n            <button type=\"button\" className=\"btn small\" disabled={!editing} onClick={() => editing && void save(editing, text)}>\n              Save\n            </button>\n            <button type=\"button\" className=\"btn small\" onClick={() => data && open(data, editing, view)}>\n              Revert\n            </button>\n            <button\n              type=\"button\"\n              className=\"btn small\"\n              disabled={!editing || editing === chosen}\n              title={editing === chosen ? 'Choose another profile before deleting this one' : 'Delete this profile'}\n              onClick={() => editing && void save(editing, null)}\n            >\n              Delete\n            </button>\n          </Row>\n          <Row label=\"Save as\" title=\"Copy this profile under a new name: letters, digits, '.', '-' and '_'\">\n            <Field label=\"New profile name\" value={copyName} placeholder=\"my-car\" onCommit={(t) => setCopyName(t.trim())} />\n            <button type=\"button\" className=\"btn small\" disabled={!copyName} onClick={() => void save(copyName, text)}>\n              Save copy\n            </button>\n          </Row>\n",
+      "after": ""
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              <Row label=\"Name\">\n                <Field label=\"Name\" value={draft.name ?? ''} onCommit={(t) => change({ ...draft, name: t.trim() })} />\n              </Row>\n",
+      "after": "              <Row label=\"Name\">\n                <Field label=\"Name\" value={draft.name ?? ''} onCommit={(t) => change({ ...draft, name: t.trim() }, 'descriptor')} />\n              </Row>\n              <details className=\"profile-json-editor\">\n                <summary>JSON Editor · advanced profile management</summary>\n          <Row label=\"Edit\" title=\"The profile this editor changes\">\n            <Segmented label=\"Edit\" value={editing ?? ''} options={ids} onChange={(id) => open(data, id)} />\n          </Row>\n          <Row label=\"JSON\" title=\"The whole profile, the schematic's shapes among it; leave the field to apply it\">\n            <textarea\n              aria-label=\"Profile JSON\"\n              className=\"profile-json\"\n              rows={12}\n              spellCheck={false}\n              value={text}\n              onChange={(event) => setText(event.target.value)}\n              onBlur={() => {\n                const read = parse(text)\n                setProblem(read.error ?? null)\n                if (read.profile) setDraft(read.profile)\n              }}\n            />\n          </Row>\n          <Row>\n            <button type=\"button\" className=\"btn small\" disabled={!editing} onClick={() => editing && void save(editing, text)}>\n              Save\n            </button>\n            <button type=\"button\" className=\"btn small\" onClick={() => data && open(data, editing, view)}>\n              Revert\n            </button>\n            <button\n              type=\"button\"\n              className=\"btn small\"\n              disabled={!editing || editing === chosen}\n              title={editing === chosen ? 'Choose another profile before deleting this one' : 'Delete this profile'}\n              onClick={() => editing && void save(editing, null)}\n            >\n              Delete\n            </button>\n          </Row>\n          <Row label=\"Save as\" title=\"Copy this profile under a new name: letters, digits, '.', '-' and '_'\">\n            <Field label=\"New profile name\" value={copyName} placeholder=\"my-car\" onCommit={(t) => setCopyName(t.trim())} />\n            <button type=\"button\" className=\"btn small\" disabled={!copyName} onClick={() => void save(copyName, text)}>\n              Save copy\n            </button>\n          </Row>\n              </details>\n"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "                  <Group title=\"Scaling\" note=\"Both scaling methods may be combined\" />",
+      "after": "                  <Row label=\"Frames per Second\" title=\"Maximum cluster frame rate requested from the iPhone\">\n                    <Field label=\"Frames per Second (FPS)\" className=\"n\" value={String(display.fps ?? 30)}\n                      onCommit={(t) => editDisplay('fps', t)} />\n                    <span className=\"unit\">FPS</span>\n                  </Row>\n                  <Group title=\"Scaling\" note=\"Both scaling methods may be combined\" />"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "<Segmented label=\"Physical zoom\" value={String(physicalZoom)} options={PHYSICAL_ZOOMS}",
+      "after": "<Segmented label=\"Physical zoom\" columns={3} value={String(physicalZoom)} options={PHYSICAL_ZOOMS}"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              <Row label=\"Car view\" title=\"The car's views, in the order its View button steps through them\">",
+      "after": "              <Group title=\"CarPlay Setup\" note=\"Live display selection and the selected vehicle view's navigation settings\" />\n              {liveContent}\n              <Row label=\"Car view\" title=\"Select a view to edit; the Controller View button switches the live cluster independently\">"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "                <button type=\"button\" className=\"btn small\" onClick={() => change(addView(draft))}>",
+      "after": "                <button type=\"button\" className=\"btn small\" onClick={() => change(addView(draft), 'descriptor')}>"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "                      change(next)\n                      setView(Math.max(0, view - 1))",
+      "after": "                      change(next, 'descriptor')\n                      setView(Math.max(0, view - 1))"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "before": "              {draft.views[view] && (\n                <>\n                  <ProfileViewForm profile={draft} index={view} change={change} liveChange={(next) => change(next, 'url')} />\n                  <Row>\n                    <small>Scene, ETA, speed limit, compass and turn card apply immediately when editing the active profile. Navigation apps may ignore unsupported requests. Frame, safe area and native scale still require reconnect.</small>\n                  </Row>\n                </>\n              )}\n",
+      "after": "              {draft.views[view] && (\n                <>\n                  <ProfileViewForm profile={draft} index={view} change={change} liveChange={(next) => change(next, 'url')} />\n                  <Row>\n                    <small>Scene, ETA, speed limit, compass and turn card apply immediately when editing the active profile. Navigation apps may ignore unsupported requests. Frame, safe area and native scale still require reconnect.</small>\n                  </Row>\n                </>\n              )}\n              {windowControls}\n              <Group title=\"Safe area\" note=\"Rectangle of the selected vehicle view, with native fallback insets below\" />\n              {draft.views[view] && (\n                <ProfileSafeAreaForm profile={draft} index={view} change={(next) => change(next, 'descriptor')} />\n              )}\n              {nativeInsets}\n"
+    },
+    {
+      "path": "webui/src/pages/AltScreenPage.tsx",
+      "before": "  return (\n    <>\n      <Group title=\"Display\"",
+      "after": "  const liveContent = (\n    <>\n        <Row\n          label=\"Content\"\n          title=\"What the AltScreen shows now, as the controls window switches it too; it opens on it again\"\n        >\n          {/* Without a session the AltScreen has no map to show: off, with nothing chosen, as on the controls window. */}\n          <Segmented\n            label=\"View\"\n            value={state.controls?.altscreen ?? ''}\n            options={VIEWS}\n            disabled={!viewOn}\n            onChange={(content) => void backend.altscreen(content as AltscreenContent)}\n          />\n        </Row>\n        <Row title=\"Keep the iPhone drawing the map view picked last while the HUD shows, so the map comes back at once; the iPhone works harder\">\n          <Switch\n            label=\"Keep map stream behind HUD\"\n            checked={settings.value('altscreen.hud.stream') === 'true'}\n            onChange={(checked) => settings.save({ 'altscreen.hud.stream': String(checked) })}\n          />\n          <Changed keys={['altscreen.hud.stream']} pending={pending} />\n        </Row>\n        <Row className=\"hint-row\">\n          <span className=\"hint\">\n            HUD is a custom screen drawn from the route, song, and call data the iPhone sends, not from CarPlay's video\n            stream\n          </span>\n        </Row>\n    </>\n  )\n  const windowControls = (\n    <>\n      <Group title=\"Window\" />\n      <AlwaysOnTop settings={settings} setting=\"altscreen.always.on.top\" />\n    </>\n  )\n  const nativeInsets = (\n    <>\n      <Row className=\"hint-row\"><small>Native Insets are retained for use without a vehicle profile; the profile rectangles above control the active view.</small></Row>\n        <SafeArea\n          key={safePrefix}\n          settings={settings}\n          prefix={safePrefix}\n          label=\"Insets\"\n          pending={pending}\n          disabled={!areaView}\n          title={areaView ? undefined : 'Show Map, Map + card, or Turn card to set its safe area'}\n          after={\n            areaView &&\n            state.altscreenWindow && (\n              <button\n                type=\"button\"\n                className=\"btn small show-frame\"\n                title=\"Show the safe area on the AltScreen for a second\"\n                onClick={() => backend.showAltscreenFrame(areaView)}\n              >\n                Show frame\n              </button>\n            )\n          }\n        />\n    </>\n  )\n  return (\n    <>\n      <Group title=\"Display\""
+    },
+    {
+      "path": "webui/src/pages/AltScreenPage.tsx",
+      "before": "        <CarProfile backend={backend} settings={settings} canReconnect={state.canShowCarPlay} altScreenWindow={state.altscreenWindow} />",
+      "after": "        <CarProfile backend={backend} settings={settings} canReconnect={state.canShowCarPlay} altScreenWindow={state.altscreenWindow}\n          liveContent={liveContent} windowControls={windowControls} nativeInsets={nativeInsets} />"
+    },
+    {
+      "path": "webui/src/pages/AltScreenPage.tsx",
+      "before": "        <AlwaysOnTop settings={settings} setting=\"altscreen.always.on.top\" />\n        <Group title=\"Appearance\" />\n        <Row\n          label=\"Content\"\n          title=\"What the AltScreen shows now, as the controls window switches it too; it opens on it again\"\n        >\n          {/* Without a session the AltScreen has no map to show: off, with nothing chosen, as on the controls window. */}\n          <Segmented\n            label=\"View\"\n            value={state.controls?.altscreen ?? ''}\n            options={VIEWS}\n            disabled={!viewOn}\n            onChange={(content) => void backend.altscreen(content as AltscreenContent)}\n          />\n        </Row>\n        {/* Map + card alone has a turn card to place: elsewhere the row is not there. */}\n        {placesCards && (\n          <Row\n            label=\"Card position\"\n            title={`Where the turn card starts${cardsKey ? `; ${keyLabel(cardsKey)} moves it while CarPlay runs` : ''}`}\n          >\n            <Segmented\n              label=\"Card position\"\n              value={settings.value('altscreen.cards') || 'auto'}\n              options={CARDS}\n              onChange={(cards) => settings.save({ 'altscreen.cards': cards })}\n            />\n            <Changed keys={['altscreen.cards']} pending={pending} />\n          </Row>\n        )}\n        {/* The shown view's part of the frame; the HUD has none. */}\n        <AreaChooser\n          group={group}\n          settings={settings}\n          pending={pending}\n          disabled={!areaView}\n          frame={frame}\n          onCustom={() => (\n            <CustomArea\n              group={group}\n              view={shown}\n              frame={frame}\n              wells={state.altscreenWells}\n              settings={settings}\n              pending={pending}\n              backend={backend}\n              showable={state.altscreenWindow != null}\n            />\n          )}\n        />\n        <Row title=\"Keep the iPhone drawing the map view picked last while the HUD shows, so the map comes back at once; the iPhone works harder\">\n          <Switch\n            label=\"Keep map stream behind HUD\"\n            checked={settings.value('altscreen.hud.stream') === 'true'}\n            onChange={(checked) => settings.save({ 'altscreen.hud.stream': String(checked) })}\n          />\n          <Changed keys={['altscreen.hud.stream']} pending={pending} />\n        </Row>\n        <Row className=\"hint-row\">\n          <span className=\"hint\">\n            HUD is a custom screen drawn from the route, song, and call data the iPhone sends, not from CarPlay's video\n            stream\n          </span>\n        </Row>\n        <Group title=\"Safe area\" note=\"Pixels at each edge\" />\n        <SafeArea\n          key={safePrefix}\n          settings={settings}\n          prefix={safePrefix}\n          label=\"Insets\"\n          pending={pending}\n          disabled={!areaView}\n          title={areaView ? undefined : 'Show Map, Map + card, or Turn card to set its safe area'}\n          after={\n            areaView &&\n            state.altscreenWindow && (\n              <button\n                type=\"button\"\n                className=\"btn small show-frame\"\n                title=\"Show the safe area on the AltScreen for a second\"\n                onClick={() => backend.showAltscreenFrame(areaView)}\n              >\n                Show frame\n              </button>\n            )\n          }\n        />\n",
+      "after": "        {!settings.value('altscreen.profile') && (\n          <>\n            <Group title=\"CarPlay Setup\" />\n            {liveContent}\n        {placesCards && (\n          <Row\n            label=\"Card position\"\n            title={`Where the turn card starts${cardsKey ? `; ${keyLabel(cardsKey)} moves it while CarPlay runs` : ''}`}\n          >\n            <Segmented\n              label=\"Card position\"\n              value={settings.value('altscreen.cards') || 'auto'}\n              options={CARDS}\n              onChange={(cards) => settings.save({ 'altscreen.cards': cards })}\n            />\n            <Changed keys={['altscreen.cards']} pending={pending} />\n          </Row>\n        )}\n            {windowControls}\n            <Group title=\"Safe area\" note=\"Pixels at each edge; only in effect without a vehicle profile\" />\n        <AreaChooser\n          group={group}\n          settings={settings}\n          pending={pending}\n          disabled={!areaView}\n          frame={frame}\n          onCustom={() => (\n            <CustomArea\n              group={group}\n              view={shown}\n              frame={frame}\n              wells={state.altscreenWells}\n              settings={settings}\n              pending={pending}\n              backend={backend}\n              showable={state.altscreenWindow != null}\n            />\n          )}\n        />\n        <SafeArea\n          key={safePrefix}\n          settings={settings}\n          prefix={safePrefix}\n          label=\"Insets\"\n          pending={pending}\n          disabled={!areaView}\n          title={areaView ? undefined : 'Show Map, Map + card, or Turn card to set its safe area'}\n          after={\n            areaView &&\n            state.altscreenWindow && (\n              <button\n                type=\"button\"\n                className=\"btn small show-frame\"\n                title=\"Show the safe area on the AltScreen for a second\"\n                onClick={() => backend.showAltscreenFrame(areaView)}\n              >\n                Show frame\n              </button>\n            )\n          }\n        />\n          </>\n        )}\n"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'ETA' })).getByRole('radio', { name: 'Hide' }))\n    fireEvent.click(screen.getByRole('button', { name: 'Save' }))",
+      "after": "    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'ETA' })).getByRole('radio', { name: 'Hide' }))\n    fireEvent.click(screen.getByText('JSON Editor · advanced profile management'))\n    fireEvent.click(screen.getByRole('button', { name: 'Save' }))"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "    fireEvent.click(within(views()).getByRole('radio', { name: 'View 1' }))\n    fireEvent.click(screen.getByRole('button', { name: 'Save' }))",
+      "after": "    fireEvent.click(within(views()).getByRole('radio', { name: 'View 1' }))\n    fireEvent.click(screen.getByText('JSON Editor · advanced profile management'))\n    fireEvent.click(screen.getByRole('button', { name: 'Save' }))"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "    expect((screen.getByRole('button', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(true)",
+      "after": "    fireEvent.click(screen.getByText('JSON Editor · advanced profile management'))\n    expect((screen.getByRole('button', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(true)"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "    expect(applied.views[0].options.showCompass).toBe('yes')\n\n    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Edit' }))",
+      "after": "    expect(applied.views[0].options.showCompass).toBe('yes')\n\n    fireEvent.click(screen.getByText('JSON Editor · advanced profile management'))\n    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Edit' }))"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "  // Saved, the editor stays on the view being edited rather than going back to the first.",
+      "after": "  it('retains the native live Content control and exposes custom FPS and six physical zoom choices', async () => {\n    await altscreenPage()\n    expect(screen.getByText('CarPlay Setup')).toBeTruthy()\n    expect(screen.getByRole('radiogroup', { name: 'View' })).toBeTruthy()\n    expect(screen.getByRole('textbox', { name: 'Frames per Second (FPS)' })).toBeTruthy()\n    expect(within(screen.getByRole('radiogroup', { name: 'Physical zoom' })).getAllByRole('radio')).toHaveLength(6)\n    expect(within(screen.getByRole('radiogroup', { name: 'Physical zoom' })).getByRole('radio', { name: '50 %' })).toBeTruthy()\n    expect(screen.getByRole('textbox', { name: 'Safe area x' })).toBeTruthy()\n    expect(screen.getByText('JSON Editor · advanced profile management')).toBeTruthy()\n    const json = screen.getByRole('textbox', { name: 'Profile JSON' })\n    expect(json.closest('details')?.open).toBe(false)\n    fireEvent.click(screen.getByText('JSON Editor · advanced profile management'))\n    expect(json.closest('details')?.open).toBe(true)\n  })\n\n  // Saved, the editor stays on the view being edited rather than going back to the first."
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "fireEvent.change(y, { target: { value: '136' } })",
+      "after": "fireEvent.change(y, { target: { value: '100' } })"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "expect(saved.areas[0]).toEqual([364, 136, 280, 255])",
+      "after": "expect(saved.areas[0]).toEqual([364, 100, 280, 255])"
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "before": "    fireEvent.click(screen.getByRole('button', { name: 'Save' }))\n\n    await waitFor(() => expect(backend.profileSaves).toHaveLength(2))\n    const saved = JSON.parse(backend.profileSaves[1].text!)\n    expect(backend.profileSaves[1].id).toBe('car')",
+      "after": "    fireEvent.click(screen.getByRole('button', { name: 'Save' }))\n\n    await waitFor(() => expect(backend.profileSaves).toHaveLength(3))\n    const saved = JSON.parse(backend.profileSaves[2].text!)\n    expect(backend.profileSaves[2].id).toBe('car')"
+    }
+  ]
+}
