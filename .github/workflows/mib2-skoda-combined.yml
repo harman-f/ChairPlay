@@ -1,0 +1,226 @@
+name: ChairPlay MIB2 Skoda combined P6 source patch integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'contrib/mib2-skoda/**'
+      - 'automation/**'
+      - '.github/workflows/mib2-skoda-combined.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chairplay-mib2-combined-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  luna-p6-jar-patch:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - name: Check out full fork with versioned patchchain
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Clone exact pinned ChairPlay source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $revision = (Get-Content 'contrib/mib2-skoda/patchchain/UPSTREAM_REVISION.txt' -Raw).Trim()
+          git clone --recurse-submodules --branch feature/skoda_790 https://github.com/zakklmv/ChairPlay.git "$env:RUNNER_TEMP\ChairPlay"
+          if ($LASTEXITCODE -ne 0) { throw 'Clone failed' }
+          git -C "$env:RUNNER_TEMP\ChairPlay" checkout --detach $revision
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned revision checkout failed' }
+          git -C "$env:RUNNER_TEMP\ChairPlay" submodule update --init --recursive
+          if ($LASTEXITCODE -ne 0) { throw 'Submodule fetch failed' }
+
+      - name: Apply tested live navigation controls fix
+        shell: pwsh
+        run: |
+          & 'contrib/mib2-skoda/patchchain/scripts/apply-live-profile-patch.ps1' "$env:RUNNER_TEMP\ChairPlay"
+
+      - name: Apply Manual Setup and Scaling patch
+        shell: pwsh
+        run: |
+          & 'contrib/mib2-skoda/patchchain/scripts/apply-manual-scaling-patch.ps1' "$env:RUNNER_TEMP\ChairPlay" 'contrib/mib2-skoda/patchchain/scripts/patches/manual-scaling-v1.patch'
+
+      - name: Apply UI consolidation and five-view editor
+        shell: pwsh
+        run: |
+          & 'contrib/mib2-skoda/patchchain/scripts/apply-ui-consolidation-v2.ps1' "$env:RUNNER_TEMP\ChairPlay" 'contrib/mib2-skoda/patchchain/scripts/patches/ui-consolidation-v2.json'
+
+      - name: Apply Fast Smart Update v3 (unified vehicle view and real display descriptors)
+        shell: pwsh
+        run: |
+          & 'contrib/mib2-skoda/patchchain/scripts/apply-smart-update-v3.ps1' "$env:RUNNER_TEMP\ChairPlay" 'contrib/mib2-skoda/patchchain/scripts/patches/smart-update-v3.json'
+
+      - name: Apply audited ChairPlay UI v4 (fail closed if anything is missing)
+        shell: pwsh
+        run: |
+          python 'contrib/mib2-skoda/patchchain/scripts/finalize-ui-v4.py' "$env:RUNNER_TEMP\ChairPlay"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Apply approved ChairPlay UX v5 (guarded post-v4 patch)
+        shell: pwsh
+        run: |
+          python 'contrib/mib2-skoda/patchchain/scripts/finalize-ui-v5.py' "$env:RUNNER_TEMP\ChairPlay"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Restore profile geometry selector and add regression tests
+        shell: pwsh
+        run: |
+          python 'contrib/mib2-skoda/patches/finalize-geometry-luna.py' "$env:RUNNER_TEMP\ChairPlay"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate Luna screenshot client offline without iPhone
+        shell: pwsh
+        run: |
+          python -m unittest discover -v -s 'automation' -p 'test_luna_capture.py'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate offline Live Lab scenario and safety policy
+        shell: pwsh
+        run: |
+          Push-Location 'contrib/mib2-skoda/patchchain/live-lab'
+          python -m unittest discover -v -p 'test_labctl.py'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python labctl.py check scenarios/p3-updateinfo70.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
+      - name: Integrate guarded Live Lab after the approved v5 UX patch
+        shell: pwsh
+        run: |
+          python 'contrib/mib2-skoda/patchchain/live-lab/integrate_live_lab.py' "$env:RUNNER_TEMP\ChairPlay"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Apply guarded VC ViewAreas geometry patch
+        shell: pwsh
+        run: |
+          python 'contrib/mib2-skoda/patchchain/scripts/apply_vc_live_viewareas.py' "$env:RUNNER_TEMP\ChairPlay"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Prepare Vitest timeout
+        shell: pwsh
+        run: |
+          & 'contrib/mib2-skoda/patchchain/scripts/prepare-webui-tests.ps1' "$env:RUNNER_TEMP\ChairPlay"
+
+      - name: Relax pinned Gradle wrapper transport timeout on CI runner only
+        shell: pwsh
+        run: |
+          $wrapper = Join-Path $env:RUNNER_TEMP 'ChairPlay/gradle/wrapper/gradle-wrapper.properties'
+          if (!(Test-Path -LiteralPath $wrapper)) { throw 'Pinned Gradle wrapper properties missing' }
+          $text = Get-Content -LiteralPath $wrapper -Raw
+          if ($text -match '(?m)^networkTimeout=') {
+            $text = [regex]::Replace($text, '(?m)^networkTimeout=.*$', 'networkTimeout=90000')
+          } else {
+            $text += "`nnetworkTimeout=90000`n"
+          }
+          # services.gradle.org redirect/CDN has repeatedly timed out on GitHub Windows runners.
+          # Use the official direct distribution host without altering the pinned version.
+          if (!$text.Contains('services.gradle.org/distributions/')) { throw 'GRADLE_WRAPPER_URL_DRIFT' }
+          $text = $text.Replace('services.gradle.org/distributions/', 'downloads.gradle.org/distributions/')
+          Set-Content -LiteralPath $wrapper -Value $text -NoNewline
+          Write-Host 'CI_GRADLE_WRAPPER_TIMEOUT_MS=90000 (runner checkout only)'
+
+      - name: Build jar and verify web UI and Kotlin tests compile
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/ChairPlay
+        run: |
+          .\gradlew.bat test jar --no-daemon --console=plain
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path 'build/libs/chairplay.jar')) { throw 'No jar produced' }
+
+      - name: Verify cluster negotiation and runtime guards are compiled
+        shell: pwsh
+        run: |
+          $area = Get-Content "$env:RUNNER_TEMP\ChairPlay\upstream\shared\src\main\java\com\shilapi\xcertplay\airplay\AirPlayInfoPlist.kt" -Raw
+          if (!$area.Contains('put("adjacentViewAreas", areas.indices.filter { it != index })')) { throw 'VC_ADJACENT_AREAS_NOT_GENERATED' }
+          $runtime = Get-Content "$env:RUNNER_TEMP\ChairPlay\src\main\kotlin\io\github\numberonebot\chairplay\AltscreenView.kt" -Raw
+          if (!$runtime.Contains('clusterGeometryMatchesNegotiated')) { throw 'VC_NEGOTIATED_GUARD_MISSING' }
+          # The previous literal check looked for the pre-ticket implementation.
+          # Validate the actual session/stream/async-view-ask guards used by PR #177.
+          $guards = @{
+            'VC_MOVE_TICKET_GUARD_MISSING' = 'areaSettleGate.completeIfCurrent(ticket)'
+            'VC_STREAM_GENERATION_GUARD_MISSING' = 'streamGeneration.get() == streamAtSend'
+            'VC_ASYNC_VIEW_ASK_GUARD_MISSING' = 'areaSettleGate.dispatchAsk(askTicket)'
+            'VC_SESSION_IDENTITY_GUARD_MISSING' = 'active() !== session'
+            'VC_STREAM_RESET_GUARD_MISSING' = 'streamResetPending'
+            'VC_NEGOTIATED_INITIAL_AREA_MISSING' = 'negotiatedInitialArea(declared.get().clusterProfile)'
+          }
+          foreach ($guard in $guards.GetEnumerator()) {
+            if (!$runtime.Contains($guard.Value)) { throw $guard.Key }
+          }
+          $names = & jar tf "$env:RUNNER_TEMP\ChairPlay\build\libs\chairplay.jar"
+          foreach ($class in @('io/github/numberonebot/chairplay/AltscreenView.class',
+            'io/github/numberonebot/chairplay/config/AreaMoveSettleGate.class',
+            'io/github/numberonebot/chairplay/config/ClusterAreaDecision.class')) {
+            if (!($names -contains $class)) { throw "VC_MISSING_COMPILED_CLASS=$class" }
+          }
+          Write-Host 'VC_VIEWAREA_GUARDS=PASS'
+
+      - name: Verify compiled Live Lab classes are included
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/ChairPlay
+        run: |
+          $names = & jar tf 'build/libs/chairplay.jar'
+          if (!($names | Select-String -Pattern 'livelab/LiveLabController.class' -SimpleMatch -Quiet)) { throw 'LIVE_LAB_CLASS_NOT_PACKAGED' }
+          if (!($names | Select-String -Pattern 'livelab/LiveLabGate.class' -SimpleMatch -Quiet)) { throw 'LIVE_LAB_GATE_NOT_PACKAGED' }
+          $labPatch = Get-Content 'src/main/kotlin/io/github/numberonebot/chairplay/ui/UiServer.kt' -Raw
+          if (!$labPatch.Contains('route !in setOf("live-lab", "screenshot") && !authorized(exchange)')) { throw 'LIVE_LAB_TOKEN_FREE_GATE_NOT_APPLIED' }
+          $uiPatch = Get-Content 'src/main/kotlin/io/github/numberonebot/chairplay/ui/ChairPlayUi.kt' -Raw
+          if (!$uiPatch.Contains('?: 18765, log = log')) { throw 'LIVE_LAB_FIXED_PORT_NOT_APPLIED' }
+          Write-Host 'LIVE_LAB_CLASSES=PASS'
+
+      - name: Verify the compiled UI includes the audited v4 and v5 markers
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem "$env:RUNNER_TEMP\ChairPlay\build\webui\resources\ui" -Recurse -Filter '*.js'
+          if (!$files) { throw 'Missing compiled WebUI JS' }
+          if (!(Select-String -Path $files.FullName -Pattern 'UI v4' -SimpleMatch -Quiet)) {
+            throw 'UI_V4_BUILD_MISMATCH: bundle does not contain audited UI v4; do not package'
+          }
+          if (!(Select-String -Path $files.FullName -Pattern 'Couple Controller' -SimpleMatch -Quiet)) { throw 'UI_V5_BUILD_MISMATCH: Coupling control absent' }
+          if (!(Select-String -Path $files.FullName -Pattern 'Assign to View' -SimpleMatch -Quiet)) { throw 'UI_V5_BUILD_MISMATCH: Single area selector absent' }
+          if (!(Select-String -Path $files.FullName -Pattern 'Custom width' -SimpleMatch -Quiet)) { throw 'UI_GEOMETRY_BUILD_MISMATCH: Profile custom width missing' }
+          if (!(Select-String -Path $files.FullName -Pattern 'no-profile fallback' -SimpleMatch -Quiet)) { throw 'UI_GEOMETRY_BUILD_MISMATCH: Fallback separation note missing' }
+          Write-Host 'UI_V4_V5_BUNDLE=PASS'
+
+      - name: Upload tested combined JAR (not a full installer)
+        uses: actions/upload-artifact@v4
+        with:
+          name: chairplay-mib2-skoda-p6-combined-jar
+          path: ${{ runner.temp }}/ChairPlay/build/libs/chairplay.jar
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Record patched source diff for permanent integration
+        shell: pwsh
+        run: |
+          git -C "$env:RUNNER_TEMP\ChairPlay" diff --binary > chairplay-combined-source.patch
+          git -C "$env:RUNNER_TEMP\ChairPlay" status --short > chairplay-combined-status.txt
+          if (!(Test-Path chairplay-combined-source.patch)) { throw 'Source diff export missing' }
+
+      - name: Upload integration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: chairplay-mib2-skoda-source-integration
+          path: |
+            chairplay-combined-source.patch
+            chairplay-combined-status.txt
+          retention-days: 14
+          if-no-files-found: error
