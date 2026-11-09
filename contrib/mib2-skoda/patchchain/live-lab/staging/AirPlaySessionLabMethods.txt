@@ -1,0 +1,84 @@
+    /**
+     * Live Lab uses the byte-exact /info payload returned on THIS control session.
+     * The original bytes never leave this session object; only the readiness reason and counters are exposed.
+     */
+    private fun liveLabBaseline(): Pair<Map<*, *>?, String> {
+        if (closed.get()) return null to "SESSION_CLOSED"
+        if (clusterStream <= 0) return null to "STREAM111_NOT_ACTIVE"
+        val snapshot = liveLabInfoBytes ?: return null to "NO_INFO_SNAPSHOT"
+        val info = runCatching { BplistCodec.decode(snapshot.copyOf()) }.getOrNull() as? Map<*, *>
+            ?: return null to "INVALID_INFO"
+        if (info.keys.any { it !is String }) return null to "INVALID_INFO_KEYS"
+        if (info.containsKey("displayPanels")) return null to "DDP_CONFLICT"
+        val displays = info["displays"] as? List<*> ?: return null to "MISSING_DISPLAYS"
+        if (displays.size != 2) return null to "UNSUPPORTED_TOPOLOGY"
+        val entries = displays.map { it as? Map<*, *> ?: return null to "INVALID_DISPLAY" }
+        if (entries.any { entry -> entry.keys.any { it !is String } }) return null to "INVALID_DISPLAY_KEYS"
+        val types = entries.map { (it["type"] as? Number)?.toInt() }
+        if (types.count { it == 110 } != 1 || types.count { it == 111 } != 1) {
+            return null to "UNSUPPORTED_TOPOLOGY"
+        }
+        val uuids = entries.map { it["uuid"] as? String ?: return null to "MISSING_UUID" }
+        if (uuids.any { it.isBlank() } || uuids.distinct().size != uuids.size) return null to "DUPLICATE_UUID"
+        val cluster = entries[types.indexOf(111)]
+        if (cluster["uuid"] != AirPlayInfoPlist.ALT_UUID) return null to "CLUSTER_UUID_MISMATCH"
+        for (key in listOf("widthPixels", "heightPixels", "widthPhysical", "heightPhysical")) {
+            if (((cluster[key] as? Number)?.toInt() ?: 0) <= 0) return null to "INVALID_GEOMETRY"
+        }
+        // A reversible 100->70->100 experiment is only valid if the actually advertised baseline was 100.
+        if ((cluster["zoomFactor"] as? Number)?.toInt() != 100) return null to "BASELINE_NOT_100"
+        return info to "NONE"
+    }
+
+    /** Read-only sanitized capability check, no device ids, routes, or raw plist. */
+    fun liveLabInfoStatus(): Map<String, Any?> {
+        val (info, reason) = liveLabBaseline()
+        return linkedMapOf(
+            "descriptorReady" to (info != null),
+            "descriptorReason" to reason,
+            "stream111Active" to (clusterStream > 0),
+            "stream111SetupCount" to clusterStreamSetups,
+            "mainFrameRendered" to hasRenderedMainFrame,
+        )
+    }
+
+    /**
+     * One gated receiver-originated updateInfo event. Called ONLY by the ChairPlay sender-thread gate.
+     * This does not renegotiate the session, and local write is not an iOS acknowledgement.
+     */
+    fun liveLabSendUpdateInfo(zoomPercent: Int): Map<String, Any?> {
+        if (zoomPercent !in setOf(70, 100)) {
+            return mapOf("state" to "REJECTED", "reason" to "ZOOM_NOT_ALLOWED", "localSent" to false)
+        }
+        val (info, reason) = liveLabBaseline()
+        if (info == null) {
+            return mapOf("state" to "REJECTED", "reason" to reason, "localSent" to false)
+        }
+        val original = info["displays"] as List<*>
+        val clonedDisplays = original.map { item ->
+            val entry = item as Map<*, *>
+            if ((entry["type"] as Number).toInt() != 111) item
+            else LinkedHashMap<String, Any?>().apply {
+                for ((key, value) in entry) put(key as String, value)
+                put("zoomFactor", zoomPercent)
+            }
+        }
+        val updatedInfo = LinkedHashMap<String, Any?>()
+        for ((key, value) in info) updatedInfo[key as String] = value
+        updatedInfo["displays"] = clonedDisplays
+        // No external plist, no arbitrary command name, no Type110 changes.
+        val cmd = linkedMapOf<String, Any?>("type" to "updateInfo", "value" to updatedInfo)
+        return synchronized(eventWriteLock) {
+            if (closed.get()) {
+                mapOf("state" to "REJECTED", "reason" to "SESSION_CLOSED", "localSent" to false)
+            } else {
+                val sent = sendCommandLocked(cmd)
+                mapOf("state" to if (sent) "LOCAL_SENT" else "REJECTED",
+                    "reason" to if (sent) "NONE" else "EVENT_CHANNEL_NOT_READY",
+                    "localSent" to sent,
+                    "eventCSeq" to if (sent) eventCseq else null,
+                    "ack" to "NOT_OBSERVED")
+            }
+        }
+    }
+
