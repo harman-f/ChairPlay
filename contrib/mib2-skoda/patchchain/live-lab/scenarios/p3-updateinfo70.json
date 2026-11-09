@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "id": "p3-updateinfo70",
+  "description": "One bounded same-session attempt: unchanged baseline; Type111 zoom 70; scene refresh; restore 100. Requires approved local lab integration and explicit arm.",
+  "steps": [
+    {
+      "op": "status"
+    },
+    {
+      "op": "capture",
+      "tag": "baseline-100"
+    },
+    {
+      "op": "command",
+      "command": "updateInfo",
+      "zoomPercent": 100,
+      "tag": "unchanged-info"
+    },
+    {
+      "op": "command",
+      "command": "updateInfo",
+      "zoomPercent": 70,
+      "tag": "change-to-70"
+    },
+    {
+      "op": "capture",
+      "tag": "after-updateInfo"
+    },
+    {
+      "op": "command",
+      "command": "stopUI",
+      "tag": "stop-scene"
+    },
+    {
+      "op": "command",
+      "command": "showUI",
+      "tag": "show-scene"
+    },
+    {
+      "op": "capture",
+      "tag": "after-scene-refresh"
+    },
+    {
+      "op": "command",
+      "command": "updateInfo",
+      "zoomPercent": 100,
+      "tag": "restore-100"
+    },
+    {
+      "op": "capture",
+      "tag": "restored-100"
+    },
+    {
+      "op": "status"
+    }
+  ]
+}
