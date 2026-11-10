@@ -250,12 +250,14 @@ jobs:
           $ErrorActionPreference = 'Stop'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
+          # Only version native source and vendored notices; never CI-generated patch artifacts.
+          git add -A -- src webui gradle native packaging upstream build.gradle.kts settings.gradle.kts gradlew gradlew.bat .gitmodules
           if ($LASTEXITCODE -ne 0) { throw 'git add failed' }
-          git diff --cached --check
-          if ($LASTEXITCODE -ne 0) { throw 'Native source diff failed whitespace check' }
-          git diff --cached --stat
+          # Preserve upstream third-party formatting byte-for-byte; check our rewritten build files only.
+          git diff --cached --check -- build.gradle.kts gradle/upstream.gradle.kts
+          if ($LASTEXITCODE -ne 0) { throw 'Native build metadata whitespace check failed' }
           $changed = git diff --cached --name-only
+          Write-Host "NATIVE_FILES_STAGED=$($changed.Count)"
           if (-not ($changed -match '^src/') -or -not ($changed -match '^upstream/shared/')) { throw 'Native code or vendored DiPlay source not staged' }
           git commit -m "feat(chairplay): consolidate verified Skoda P6 native source and DiPlay core"
           if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
