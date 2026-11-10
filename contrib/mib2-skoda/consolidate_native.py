@@ -10,6 +10,7 @@ import sys
 
 SOURCE_REV = "fd7a22fa1f503695309ec9efad0e48b2d900349f"
 DIPLAY_REV = "28d6002ba00320f0ba745212160b08759e4f60b9"
+DIPLAY_DATE = "2026-10-28"  # Verified DiPlay commit UTC date
 CODE_ROOTS = ("src/", "webui/", "gradle/", "native/", "packaging/")
 CODE_FILES = {"build.gradle.kts", "settings.gradle.kts", "gradle.properties", "gradlew", "gradlew.bat"}
 VENDOR_ROOTS = ("shared/", "docs/licenses/dependencies/")
@@ -105,7 +106,7 @@ upgradle.write_text(text, encoding="utf-8", newline="\n")
 build = dest / "build.gradle.kts"
 text = build.read_text(encoding="utf-8")
 text = text.replace('"app" to commit(root), "core" to commit(root.resolve("upstream"))',
-                    '"app" to commit(root)')
+                    f'"app" to commit(root), "core" to listOf("{DIPLAY_REV[:8]}", "{DIPLAY_DATE}")')
 if '"core" to commit(root.resolve("upstream"))' in text:
     raise RuntimeError("MISLEADING_SUBMODULE_VERSION")
 build.write_text(text, encoding="utf-8", newline="\n")
