@@ -1,0 +1,206 @@
+{
+  "upstreamRevision": "fd7a22fa1f503695309ec9efad0e48b2d900349f",
+  "baseBranch": "work/chairplay-skoda790-safearea-calibration-20261103",
+  "edits": [
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/UiApi.kt",
+      "sha": "5b92ae63cadcbf66fe7998e2a3827966bdef081b",
+      "steps": [
+        {
+          "before": "    /** Ends the session or bring-up; none starts until Connect. */\n    fun disconnect()",
+          "after": "    /** Ends the session or bring-up; none starts until Connect. */\n    fun disconnect()\n\n    /** Explicit, volatile modern display-panel experiment; never part of normal settings. */\n    fun panelProbe(mode: String, value: Int?): Map<String, Any?> = mapOf(\"state\" to \"UNSUPPORTED\")"
+        },
+        {
+          "before": "    /** Shows the screen named \"start\", \"settings\" or \"carplay\"; false when it cannot be shown. */",
+          "after": "    /** Volatile display-panel experiment; returns local-send status, not iOS acceptance. */\n    fun panelProbe(mode: String, value: Int?): Map<String, Any?> = mapOf(\"state\" to \"UNSUPPORTED\")\n\n    /** Shows the screen named \"start\", \"settings\" or \"carplay\"; false when it cannot be shown. */"
+        }
+      ]
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/UiController.kt",
+      "sha": "447a885af955a94eed29d77094077ac9c1b0db4e",
+      "steps": [
+        {
+          "before": "    override fun reconnect() = actions.reconnect()",
+          "after": "    override fun panelProbe(mode: String, value: Int?): Map<String, Any?> = actions.panelProbe(mode, value)\n\n    override fun reconnect() = actions.reconnect()"
+        }
+      ]
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/UiPosts.kt",
+      "sha": "049a9cb4a3ef86107c2798e6bbc7874c4e78956e",
+      "steps": [
+        {
+          "before": "        \"volume\" -> {",
+          "after": "        \"panel-probe\" -> {\n            val mode = body[\"mode\"] as? String\n            val allowed = setOf(\"status\", \"enable\", \"disable\", \"baseline\", \"zoom\", \"physical\", \"apply\")\n            val value = (body[\"value\"] as? Number)?.toInt()\n            when {\n                mode !in allowed -> json(400, mapOf(\"error\" to \"Unknown panel probe mode\"))\n                mode in setOf(\"zoom\", \"physical\") && value !in setOf(70, 85, 100, 125, 150) ->\n                    json(400, mapOf(\"error\" to \"Allowed scale percentages: 70, 85, 100, 125, 150\"))\n                mode !in setOf(\"zoom\", \"physical\") && body[\"value\"] != null ->\n                    json(400, mapOf(\"error\" to \"No value permitted for this mode\"))\n                else -> {\n                    val result = api.panelProbe(mode!!, value)\n                    json(if (result[\"state\"] == \"REJECTED\") 409 else 200, result)\n                }\n            }\n        }\n        \"volume\" -> {"
+        }
+      ]
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/ui/UiServer.kt",
+      "sha": "d4ecdb119f6f29c786a7c336bc44ec77b607b63d",
+      "steps": [
+        {
+          "before": "\"cluster-profile\")",
+          "after": "\"cluster-profile\", \"panel-probe\")"
+        }
+      ]
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/Main.kt",
+      "sha": "e1f384dbb696bf75a3b1ee587444c622b56727d0",
+      "steps": [
+        {
+          "before": "val ui = ChairPlayUi(dir, config, firewall, object : UiActions {\n        override fun connect()",
+          "after": "val ui = ChairPlayUi(dir, config, firewall, object : UiActions {\n        override fun panelProbe(mode: String, value: Int?): Map<String, Any?> =\n            PanelUpdateProbe.perform(mode, value, active::get, touchSender, ::log, profile = { altView.carViews.profile })\n\n        override fun connect()"
+        },
+        {
+          "before": "    bootstrap.onConnection = { now ->\n        val size = WindowSize(now.displayWidth, now.displayHeight)",
+          "after": "    bootstrap.onConnection = { now ->\n        PanelUpdateProbe.beginConnection()\n        val size = WindowSize(now.displayWidth, now.displayHeight)"
+        }
+      ]
+    },
+    {
+      "path": "src/main/kotlin/io/github/numberonebot/chairplay/config/ClusterProfile.kt",
+      "sha": null,
+      "steps": [
+        {
+          "before": "import com.shilapi.xcertplay.airplay.AirPlayViewArea",
+          "after": "import com.shilapi.xcertplay.airplay.AirPlayViewArea\nimport io.github.numberonebot.chairplay.PanelUpdateProbe"
+        },
+        {
+          "before": "                if ((item as? Map<*, *>)?.get(\"uuid\") == AirPlayInfoPlist.ALT_UUID) profile.displayEntry() else item\n            }\n        }",
+          "after": "                if ((item as? Map<*, *>)?.get(\"uuid\") == AirPlayInfoPlist.ALT_UUID) profile.displayEntry() else item\n            }\n            PanelUpdateProbe.advertise(info)\n        }"
+        }
+      ]
+    },
+    {
+      "path": "webui/src/api.ts",
+      "sha": "388100735e3615cd55b4606763545d7e0a4f16cd",
+      "steps": [
+        {
+          "before": "export type FolderSizes = Partial<Record<'logs' | 'screenshots', number>>",
+          "after": "export type FolderSizes = Partial<Record<'logs' | 'screenshots', number>>\n\n/** Experimental AirPlay panel sender: LOCAL_SENT confirms only a socket write, never iOS acceptance. */\nexport type PanelProbeMode = 'status' | 'enable' | 'disable' | 'baseline' | 'zoom' | 'physical' | 'apply'\nexport interface PanelProbeStatus {\n  enabled: boolean\n  advertised: boolean\n  advertisedCount?: number\n  baselineSent?: boolean\n  state: string\n  ack?: string\n  visualEffect?: string\n  mode?: string\n  value?: number\n  detail?: string\n}"
+        },
+        {
+          "before": "  /** Plays a HUD demo on the AltScreen, or stops it (null); false when none can play. */\n  demo(kind: DemoKind | null): Promise<boolean>",
+          "after": "  /** Plays a HUD demo on the AltScreen, or stops it (null); false when none can play. */\n  demo(kind: DemoKind | null): Promise<boolean>\n  /** Explicit opt-in updateDisplayPanels POC; never a persistent scaling preference. */\n  panelProbe(mode: PanelProbeMode, value?: number): Promise<PanelProbeStatus>"
+        }
+      ]
+    },
+    {
+      "path": "webui/src/apiClient.ts",
+      "sha": "adfe35df373fdce9234e56b629c403cecb216dd3",
+      "steps": [
+        {
+          "before": "  PictureWindow,\n  RouteAction,",
+          "after": "  PictureWindow,\n  PanelProbeMode,\n  PanelProbeStatus,\n  RouteAction,"
+        },
+        {
+          "before": "  async volume(level: number): Promise<boolean> {",
+          "after": "  async panelProbe(mode: PanelProbeMode, value?: number): Promise<PanelProbeStatus> {\n    const { data } = await this.request('POST', 'panel-probe', { mode, ...(value === undefined ? {} : { value }) })\n    return data as PanelProbeStatus\n  }\n\n  async volume(level: number): Promise<boolean> {"
+        }
+      ]
+    },
+    {
+      "path": "webui/src/fakeBackend.ts",
+      "sha": "c7d5e84d92247acee3d9cabd12b8b04b4153348a",
+      "steps": [
+        {
+          "before": "  PictureWindow,\n  RouteAction,",
+          "after": "  PictureWindow,\n  PanelProbeMode,\n  PanelProbeStatus,\n  RouteAction,"
+        },
+        {
+          "before": "  /** The volume levels the Audio page set. */",
+          "after": "  /** Isolated panel POC fake. The test decides when a reconnect has advertised modern panels. */\n  panelProbeCalls: Array<{ mode: PanelProbeMode; value?: number }> = []\n  panelProbeEnabled = false\n  panelProbeAdvertised = false\n  panelProbeBaselineSent = false\n  async panelProbe(mode: PanelProbeMode, value?: number): Promise<PanelProbeStatus> {\n    this.panelProbeCalls.push({ mode, value })\n    if (mode === 'enable' || mode === 'disable') {\n      this.panelProbeEnabled = mode === 'enable'\n      this.panelProbeAdvertised = false\n      this.panelProbeBaselineSent = false\n    }\n    const ready = this.panelProbeEnabled && this.panelProbeAdvertised\n    const sent = ready && ['baseline', 'zoom', 'physical', 'apply'].includes(mode) && (mode === 'baseline' || this.panelProbeBaselineSent)\n    if (mode === 'baseline' && sent) this.panelProbeBaselineSent = true\n    return {\n      enabled: this.panelProbeEnabled, advertised: ready,\n      baselineSent: this.panelProbeBaselineSent,\n      state: sent ? 'LOCAL_SENT' : !this.panelProbeEnabled ? 'OFF' : ready ? 'DESCRIPTOR_OFFERED' : 'RECONNECT_REQUIRED',\n      detail: sent ? 'Encrypted AirPlay event written. No iOS acknowledgement or visual effect proven.' : undefined,\n      ack: 'NOT_OBSERVED', visualEffect: 'UNKNOWN', mode, value,\n    }\n  }\n\n  /** The volume levels the Audio page set. */"
+        }
+      ]
+    },
+    {
+      "path": "webui/src/pages/ExperimentsPage.tsx",
+      "sha": "5288a8d4af339a03b54c7863600435774cf15040",
+      "steps": [
+        {
+          "before": "import type { AppState, Backend, DemoKind, FolderSizes } from '../api'",
+          "after": "import type { AppState, Backend, DemoKind, FolderSizes, PanelProbeMode, PanelProbeStatus } from '../api'"
+        },
+        {
+          "before": "const DEMOS: readonly (readonly [kind: DemoKind, label: string, title: string])[] = [",
+          "after": "const DEMOS: readonly (readonly [kind: DemoKind, label: string, title: string])[] = ["
+        },
+        {
+          "before": "  const sizes = useFolderSizes(backend)\n  return (",
+          "after": "  const sizes = useFolderSizes(backend)\n  const [panel, setPanel] = useState<PanelProbeStatus | null>(null)\n  const [panelBusy, setPanelBusy] = useState(false)\n  useEffect(() => {\n    let current = true\n    void backend.panelProbe('status').then((result) => { if (current) setPanel(result) }, () => {})\n    return () => { current = false }\n  }, [backend, state.phase])\n  const panelReady = state.phase === 'active' && panel?.enabled && panel?.advertised\n  async function probe(mode: PanelProbeMode, value?: number) {\n    setPanelBusy(true)\n    try {\n      const result = await backend.panelProbe(mode, value)\n      setPanel(result)\n    } catch (error) {\n      setPanel((previous) => ({\n        enabled: previous?.enabled ?? false, advertised: previous?.advertised ?? false,\n        state: 'REJECTED', detail: String(error),\n      }))\n    } finally { setPanelBusy(false) }\n  }\n  return ("
+        },
+        {
+          "before": "      <Group title=\"Logs\" note={note(['log.carplay.data'])} />",
+          "after": "      <Group title=\"Live Display Panels · experimental\" note=\"Separate from reconnect-based Scaling; Type 111 only\" />\n      <Row label=\"Modern panels\" title=\"Opt in: offer displayPanels in /info only on the next CarPlay connection; never in normal ChairPlay\">\n        <Switch label=\"Enable panel probe (reconnect once)\" checked={panel?.enabled ?? false}\n          disabled={panelBusy} onChange={(on) => void probe(on ? 'enable' : 'disable')} />\n      </Row>\n      <Row label=\"Negotiate\">\n        <button className=\"btn small\" type=\"button\" disabled={!panel?.enabled || panelBusy}\n          onClick={() => { void backend.reconnect() }}>Reconnect CarPlay</button>\n        <button className=\"btn small\" type=\"button\" disabled={panelBusy} onClick={() => void probe('status')}>Refresh status</button>\n      </Row>\n      <Row label=\"No-op baseline\">\n        <button className=\"btn small\" type=\"button\" disabled={!panelReady || panelBusy}\n          onClick={() => void probe('baseline')}>Send unchanged panel</button>\n      </Row>\n      <Row label=\"Live scaling\">\n        <small>After the unchanged panel baseline, open AltScreen → Scaling. Changes to the existing Zoom factor,\n          Physical zoom and reference physical millimetres are saved and then automatically dispatched\n          with updateDisplayPanels while this experiment is active. No extra zoom/physical buttons.</small>\n      </Row>\n      <Row label=\"POC status\">\n        <small role=\"status\">\n          {panel?.state ?? 'Reading…'} · advertised={String(panel?.advertised ?? false)} · baseline={String(panel?.baselineSent ?? false)} ·\n          ACK={panel?.ack ?? 'NOT_OBSERVED'} · visual={panel?.visualEffect ?? 'UNKNOWN'}\n          {panel?.detail ? ' · ' + panel.detail : ''}\n        </small>\n      </Row>\n      <Row label=\"Evidence\">\n        <small>First verify normal scaling with reconnect. After enabling this probe, reconnect once,\n          show a cluster map, send the unchanged panel, then change zoom/physical in AltScreen → Scaling.\n          LOCAL_SENT means only that ChairPlay wrote to the event socket; it is not an iOS ACK.\n          If CarPlay disconnects, disable the probe and reconnect to restore legacy mode.</small>\n      </Row>\n      <Group title=\"Logs\" note={note(['log.carplay.data'])} />"
+        }
+      ]
+    },
+    {
+      "path": "webui/src/pages/ExperimentsPage.test.tsx",
+      "sha": "bcad1bbed48c73a01171ee078a6f39e9ad598e95",
+      "steps": [
+        {
+          "before": "  it('waits for the AltScreen', async () => {",
+          "after": "  it('gates scale controls behind opt-in, reconnect and an unchanged baseline send', async () => {\n    const backend = altscreenOn()\n    await experiments(appState(live), backend)\n    const unchanged = screen.getByRole('button', { name: 'Send unchanged panel' }) as HTMLButtonElement\n    expect(unchanged.disabled).toBe(true)\n    fireEvent.click(screen.getByRole('switch', { name: 'Enable panel probe (reconnect once)' }))\n    await waitFor(() => expect(backend.panelProbeEnabled).toBe(true))\n    fireEvent.click(screen.getByRole('button', { name: 'Reconnect CarPlay' }))\n    expect(backend.reconnects).toBe(1)\n    backend.panelProbeAdvertised = true\n    fireEvent.click(screen.getByRole('button', { name: 'Refresh status' }))\n    await waitFor(() => expect(unchanged.disabled).toBe(false))\n    expect(screen.queryByRole('button', { name: 'Send zoom' })).toBeNull()\n    expect(screen.queryByRole('button', { name: 'Send physical' })).toBeNull()\n    fireEvent.click(unchanged)\n    await waitFor(() => expect(backend.panelProbeBaselineSent).toBe(true))\n    expect(screen.getByRole('status').textContent).toContain('NOT_OBSERVED')\n  })\n\n  it('waits for the AltScreen', async () => {"
+        }
+      ]
+    },
+    {
+      "path": "webui/src/pages/CarProfile.tsx",
+      "sha": null,
+      "steps": [
+        {
+          "before": "mode: 'url' | 'descriptor' | null = null",
+          "after": "mode: 'url' | 'descriptor' | 'scale' | null = null"
+        },
+        {
+          "before": "setDone(mode === 'url' ? 'Saved active view: live iPhone URL requested' : 'Display settings saved; reconnect required')",
+          "after": "if (mode === 'scale') {\n              const probe = await backend.panelProbe('status')\n              if (probe.enabled && probe.advertised && probe.baselineSent) {\n                const result = await backend.panelProbe('apply')\n                setDone(result.state === 'LOCAL_SENT'\n                  ? 'Saved; live AirPlay update sent (iOS effect UNKNOWN)'\n                  : 'Saved; live update refused: ' + (result.detail ?? result.state))\n              } else {\n                setDone('Display settings saved; reconnect required (enable POC and send baseline for live updates)')\n              }\n            } else {\n              setDone(mode === 'url' ? 'Saved active view: live iPhone URL requested' : 'Display settings saved; reconnect required')\n            }"
+        },
+        {
+          "before": "change(setDisplay(draft, key, n), 'descriptor')",
+          "after": "change(setDisplay(draft, key, n), key === 'widthMm' || key === 'heightMm' ? 'scale' : 'descriptor')"
+        },
+        {
+          "before": "onChange={(v) => change(setZoomFactor(draft, v), 'descriptor')}",
+          "after": "onChange={(v) => change(setZoomFactor(draft, v), 'scale')}"
+        },
+        {
+          "before": "onChange={(v) => change({ ...draft, display: { ...display, physicalZoom: Number(v) } }, 'descriptor')}",
+          "after": "onChange={(v) => change({ ...draft, display: { ...display, physicalZoom: Number(v) } }, 'scale')}"
+        },
+        {
+          "before": "Resolution, physical size and both zoom settings apply after CarPlay reconnect.",
+          "after": "Resolution and safe areas require reconnect. With Experiments → Live Display Panels enabled, negotiated and baselined, these Scaling controls additionally trigger a live AirPlay update; native iOS effect remains unproven."
+        },
+        {
+          "before": "Frame, safe area and native scale still require reconnect.",
+          "after": "Frame and safe area require reconnect. Live native scale is experimental and must be verified on iPhone."
+        }
+      ]
+    },
+    {
+      "path": "webui/src/pages/CarProfile.test.tsx",
+      "sha": null,
+      "steps": [
+        {
+          "before": "  it('combines iOS zoomFactor and physical zoom and reconnects through the original backend', async () => {",
+          "after": "  it('sends a live panel probe after saving active profile scaling when enabled and baselined', async () => {\n    const backend = await altscreenPage()\n    backend.panelProbeEnabled = true\n    backend.panelProbeAdvertised = true\n    backend.panelProbeBaselineSent = true\n    fireEvent.click(within(screen.getByRole('radiogroup', { name: 'Physical zoom' })).getByRole('radio', { name: '125 %' }))\n    await waitFor(() => expect(backend.panelProbeCalls).toContainEqual({ mode: 'apply', value: undefined }))\n    await waitFor(() => expect(screen.getByText(/live AirPlay update sent/)).toBeTruthy())\n  })\n\n  it('combines iOS zoomFactor and physical zoom and reconnects through the original backend', async () => {"
+        }
+      ]
+    }
+  ],
+  "copies": [
+    {
+      "source": "patches/panel-poc/panel-update-probe.kt",
+      "target": "src/main/kotlin/io/github/numberonebot/chairplay/PanelUpdateProbe.kt"
+    },
+    {
+      "source": "patches/panel-poc/PanelUpdateProbeTest.kt",
+      "target": "src/test/kotlin/io/github/numberonebot/chairplay/PanelUpdateProbeTest.kt"
+    }
+  ]
+}

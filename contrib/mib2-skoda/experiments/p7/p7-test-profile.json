@@ -1,0 +1,15 @@
+{
+  "name": "P7 isolated zoom probe — temporary test profile",
+  "display": { "width": 1010, "height": 376, "widthMm": 300, "heightMm": 112, "fps": 40, "features": 10, "primaryInputDevice": 3, "zoomFactor": 100 },
+  "areas": [
+    [202, 16, 606, 344], [18, 75, 606, 284], [386, 75, 606, 284], [325, 75, 360, 284],
+    [100, 56, 800, 245], [100, 56, 800, 245], [100, 56, 800, 245]
+  ],
+  "initialView": 0,
+  "shapes": [],
+  "views": [
+    { "name": "P7 area 4", "area": 4, "scene": "instrumentcluster", "options": {}, "shapes": [] },
+    { "name": "P7 area 5", "area": 5, "scene": "instrumentcluster", "options": {}, "shapes": [] },
+    { "name": "P7 area 6", "area": 6, "scene": "instrumentcluster", "options": {}, "shapes": [] }
+  ]
+}

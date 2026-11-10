@@ -1,0 +1,214 @@
+diff --git a/contrib/mib2-skoda/patchchain/panel-p8/PanelReaddProbe.kt b/contrib/mib2-skoda/patchchain/panel-p8/PanelReaddProbe.kt
+new file mode 100644
+index 0000000..5fddeeb
+--- /dev/null
++++ b/contrib/mib2-skoda/patchchain/panel-p8/PanelReaddProbe.kt
+@@ -0,0 +1,163 @@
++package io.github.numberonebot.chairplay
++
++import com.shilapi.xcertplay.airplay.AirPlaySession
++import java.time.Instant
++import java.util.UUID
++import java.util.concurrent.Callable
++import java.util.concurrent.ExecutorService
++import java.util.concurrent.Executors
++import java.util.concurrent.TimeUnit
++
++/**
++ * P8 (CaneTLOTW/M.I.B._Research, harman-f/mhi2_altscreen_carplay#159): updateDisplayPanels variant B.
++ * Remove the secondary panel (Type111) from the panel list while Type110 stays, then re-register it
++ * with a new zoomFactor. DEFAULT OFF: needs JVM property chairplay.p8=1 or env CHAIRPLAY_P8=1 AND an
++ * enabled PanelUpdateProbe (DDP /info) AND an explicit trigger. A local write is NOT an iOS ACK;
++ * ACK/CSeq correlation (P5 D4) is not implemented, hence ack=NOT_OBSERVED always.
++ *
++ * Modes: p8status | p8a (remove 111) | p8b (re-add same UUID, new zoom) |
++ *        p8run (a, delay, b) | p8c (like p8run but NEW 111 uuid; H2 isolate) | p8abort (resend original list).
++ */
++internal object PanelReaddProbe {
++    private val lock = Any()
++    private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
++        Thread(r, "p8-delay").apply { isDaemon = true }
++    }
++    private const val MAX_WRITES = 6
++    private var generationSession: AirPlaySession? = null
++    private var generation = 0L
++    private var writes = 0
++    private var running = false
++
++    val enabled: Boolean
++        get() = (System.getProperty("chairplay.p8") ?: System.getenv("CHAIRPLAY_P8") ?: "") == "1"
++
++    private val delayMs: Long
++        get() = ((System.getProperty("chairplay.p8.delayMs") ?: System.getenv("CHAIRPLAY_P8_DELAY_MS") ?: "500")
++            .toLongOrNull() ?: 500L).coerceIn(100L, 5000L)
++
++    /** Target zoom for the re-add: 70 or 100 only; default is the opposite of the advertised value. */
++    private fun targetZoom(baseline: Number?): Int {
++        val forced = (System.getProperty("chairplay.p8.zoom") ?: System.getenv("CHAIRPLAY_P8_ZOOM"))?.toIntOrNull()
++        if (forced == 70 || forced == 100) return forced
++        return if ((baseline?.toInt() ?: 100) == 100) 70 else 100
++    }
++
++    private fun firstStreamUuid(panel: Map<String, Any?>, fallback: String): String =
++        ((panel["initialVideoStreams"] as? List<*>)?.firstOrNull() as? Map<*, *>)?.get("uuid") as? String ?: fallback
++
++    private fun entry(panel: Map<String, Any?>, uid: String, zoom: Int?, streamUuid: String): Map<String, Any?>? {
++        val out = linkedMapOf<String, Any?>(
++            "uid" to uid,
++            // Non-empty videoStreams are mandatory for every entry, including the re-added 111.
++            "videoStreams" to listOf(
++                linkedMapOf("uuid" to streamUuid, "originXPixels" to 0, "originYPixels" to 0, "zIndex" to 0),
++            ),
++        )
++        for (name in listOf("widthPixels", "heightPixels", "widthPhysical", "heightPhysical")) {
++            out[name] = panel[name] as? Number ?: return null
++        }
++        val z = zoom ?: (panel["zoomFactor"] as? Number)
++        if (z != null) out["zoomFactor"] = z
++        return out
++    }
++
++    private fun payload(panels: List<Map<String, Any?>>) =
++        mapOf("type" to "updateDisplayPanels", "params" to mapOf("displayPanels" to panels))
++
++    /** Pure builder (unit-testable): step is a, b, c or abort; null when the baseline is unusable. */
++    fun build(step: String, panels: List<Map<String, Any?>>, newUuid: String? = null): Map<String, Any?>? {
++        val main = panels.singleOrNull { (it["type"] as? Number)?.toInt() == 110 } ?: return null
++        val sec = panels.singleOrNull { (it["type"] as? Number)?.toInt() == 111 } ?: return null
++        val mainUid = main["uid"] as? String ?: return null
++        val secUid = sec["uid"] as? String ?: return null
++        val mainEntry = entry(main, mainUid, null, firstStreamUuid(main, mainUid)) ?: return null
++        val secStream = firstStreamUuid(sec, secUid)
++        return when (step) {
++            "a" -> payload(listOf(mainEntry))
++            "abort" -> payload(listOf(mainEntry, entry(sec, secUid, null, secStream) ?: return null))
++            "b" -> payload(listOf(mainEntry,
++                entry(sec, secUid, targetZoom(sec["zoomFactor"] as? Number), secStream) ?: return null))
++            "c" -> {
++                val fresh = newUuid ?: return null
++                payload(listOf(mainEntry,
++                    entry(sec, fresh, targetZoom(sec["zoomFactor"] as? Number), fresh) ?: return null))
++            }
++            else -> null
++        }
++    }
++
++    private fun stamp(session: AirPlaySession, label: String, extra: String = ""): String {
++        val st = runCatching { session.liveLabInfoStatus() }.getOrNull()
++        return "P8 t=" + Instant.now() + " gen=" + generation + " step=" + label +
++            " stream111SetupCount=" + st?.get("stream111SetupCount") +
++            " stream111Active=" + st?.get("stream111Active") +
++            " mainFrameRendered=" + st?.get("mainFrameRendered") +
++            " ack=NOT_OBSERVED " + extra
++    }
++
++    fun perform(
++        mode: String, panels: List<Map<String, Any?>>?, active: () -> AirPlaySession?,
++        sender: ExecutorService, log: (String) -> Unit,
++    ): Map<String, Any?> {
++        fun out(state: String, detail: String) = mapOf<String, Any?>(
++            "state" to state, "mode" to mode, "detail" to detail,
++            "ack" to "NOT_OBSERVED", "visualEffect" to "UNKNOWN")
++        if (!enabled) return out("REJECTED", "P8 disabled (set CHAIRPLAY_P8=1 at launch).")
++        val session = active() ?: return out("REJECTED", "No active CarPlay session.")
++        val base = panels ?: return out("REJECTED", "No DDP baseline: enable PanelUpdateProbe and reconnect first.")
++        synchronized(lock) {
++            if (generationSession !== session) { generationSession = session; generation++; writes = 0; running = false }
++            if (mode == "p8status") return out("OK", "gen=$generation writes=$writes running=$running")
++            if (mode != "p8abort") {
++                if (running) return out("REJECTED", "P8 run in progress; use p8abort.")
++                if (writes + 2 > MAX_WRITES) return out("REJECTED", "Write budget exhausted; reconnect.")
++            }
++        }
++        val steps = when (mode) {
++            "p8a" -> listOf("a")
++            "p8b" -> listOf("b")
++            "p8run" -> listOf("a", "b")
++            "p8c" -> listOf("a", "c")
++            "p8abort" -> listOf("abort")
++            else -> return out("REJECTED", "Unknown P8 mode.")
++        }
++        if (mode != "p8abort" && !runCatching { session.liveLabInfoStatus()["stream111Active"] == true }.getOrDefault(false))
++            return out("REJECTED", "Type111 stream not active; show a map view first.")
++        val fresh = UUID.randomUUID().toString().uppercase()
++        val cmds = ArrayList<Map<String, Any?>>()
++        for (step in steps) cmds += build(step, base, fresh)
++            ?: return out("REJECTED", "Baseline lacks exactly one 110 and one 111 panel with geometry.")
++        synchronized(lock) { running = steps.size > 1 }
++        log(stamp(session, "begin-$mode", "delayMs=$delayMs newUuid=" + (mode == "p8c")))
++        fun send(i: Int): Boolean {
++            val f = sender.submit(Callable {
++                if (active() !== session) false else { synchronized(lock) { writes++ }; session.sendCommand(cmds[i]) }
++            })
++            val ok = try { f.get(3, TimeUnit.SECONDS) } catch (e: Exception) { f.cancel(true); false }
++            log(stamp(session, "sent-" + steps[i], "localSent=$ok"))
++            return ok
++        }
++        if (!send(0)) {
++            synchronized(lock) { running = false }
++            return out("REJECTED", "Local write failed; no automatic retry. Use p8abort.")
++        }
++        if (steps.size == 2) {
++            scheduler.schedule({
++                try {
++                    log(stamp(session, "pre-readd"))
++                    if (active() === session) send(1) else log("P8 session changed; re-add skipped")
++                    scheduler.schedule({
++                        log(stamp(session, "post+2s")); synchronized(lock) { running = false }
++                    }, 2, TimeUnit.SECONDS)
++                } catch (e: Exception) {
++                    log("P8 re-add failed: " + e.javaClass.simpleName)
++                    synchronized(lock) { running = false }
++                }
++            }, delayMs, TimeUnit.MILLISECONDS)
++        }
++        return out("LOCAL_SENT", "Step 1 written; " +
++            (if (steps.size == 2) "re-add follows in ${delayMs}ms. " else "") +
++            "No iOS ACK or visual effect proven.")
++    }
++}
+diff --git a/contrib/mib2-skoda/patchchain/panel-p8/apply_p8.py b/contrib/mib2-skoda/patchchain/panel-p8/apply_p8.py
+new file mode 100644
+index 0000000..bf69486
+--- /dev/null
++++ b/contrib/mib2-skoda/patchchain/panel-p8/apply_p8.py
+@@ -0,0 +1,39 @@
++#!/usr/bin/env python3
++"""Apply P8 (panel remove/re-add) onto a checkout that ALREADY has the panel-poc PanelUpdateProbe.kt.
++
++Fail-closed: unique-anchor edits, no partial writes. Default behaviour is unchanged (needs CHAIRPLAY_P8=1).
++Does NOT wire a UI/HTTP route: p8* modes arrive via the existing panelProbe(mode, value) path
++(POST panel-probe route of the panel-poc patch). Never run against a device without owner approval.
++"""
++import sys
++from pathlib import Path
++
++if len(sys.argv) != 2:
++    raise SystemExit('usage: apply_p8.py <checkout>')
++root = Path(sys.argv[1]).resolve()
++here = Path(__file__).resolve().parent
++src = root / 'src/main/kotlin/io/github/numberonebot/chairplay'
++probe = src / 'PanelUpdateProbe.kt'
++target = src / 'PanelReaddProbe.kt'
++text = probe.read_text(encoding='utf-8')
++
++
++def sub(t, before, after):
++    if t.count(before) != 1:
++        raise RuntimeError(f'P8_ANCHOR_DRIFT {before[:70]!r} count={t.count(before)}')
++    return t.replace(before, after)
++
++
++text = sub(text, '    private var cluster: Map<String, Any?>? = null\n',
++           '    private var cluster: Map<String, Any?>? = null\n'
++           '    @Volatile private var allPanels: List<Map<String, Any?>>? = null\n')
++text = sub(text, '            cluster = target\n',
++           '            cluster = target\n            allPanels = panels.toList()\n')
++text = sub(text, '        if (mode == "status") return status()\n',
++           '        if (mode == "status") return status()\n'
++           '        if (mode.startsWith("p8")) return PanelReaddProbe.perform(mode, allPanels, active, sender, log)\n')
++if target.exists():
++    raise RuntimeError('P8_TARGET_EXISTS')
++target.write_text((here / 'PanelReaddProbe.kt').read_text(encoding='utf-8'), encoding='utf-8', newline='\n')
++probe.write_text(text, encoding='utf-8', newline='\n')
++print('P8_PATCH_APPLIED (default OFF: CHAIRPLAY_P8=1 + PanelUpdateProbe enabled + explicit p8* trigger)')
