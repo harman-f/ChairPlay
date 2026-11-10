@@ -1,6 +1,6 @@
 // What the settings pages build their rows from, bound to the shared settings: a field and a segmented choice that
 // save their key, the note a group's header gives, and the safe-area cross.
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { AppState, Backend, PictureWindow, WindowSizes } from '../api'
 import { Row, Segmented, type Choice } from '../shell/controls'
 import { Field } from '../shell/fields'
@@ -98,8 +98,11 @@ export function SizeRows(props: {
   after?: ReactNode
   /** To mark a changed size. */
   pending?: Pending
+  /** Show an explicit Custom choice; the editable fields remain below. */
+  showCustom?: boolean
 }) {
   const { settings, prefix, fallback } = props
+  const [customSelected, setCustomSelected] = useState(false)
   const { field } = parts(settings)
   const [widthKey, heightKey] = [`${prefix}.width`, `${prefix}.height`]
   const width = settings.value(widthKey) || String(fallback.width)
@@ -111,15 +114,17 @@ export function SizeRows(props: {
         <Segmented
           label="Size"
           columns={props.columns}
-          value={refused ? '' : `${width}x${height}`}
-          options={props.presets.map(([w, h]) => [`${w}x${h}`, `${w}×${h}`])}
+          value={refused ? '' : props.showCustom && (customSelected || !props.presets.some(([w, h]) => `${w}x${h}` === `${width}x${height}`)) ? 'custom' : `${width}x${height}`}
+          options={[...props.presets.map(([w, h]) => [`${w}x${h}`, `${w}×${h}`] as const), ...(props.showCustom ? [['custom', 'Custom'] as const] : [])]}
           onChange={(preset) => {
+            if (preset === 'custom') { setCustomSelected(true); return }
+            setCustomSelected(false)
             const [presetWidth, presetHeight] = preset.split('x')
             settings.save({ [widthKey]: presetWidth, [heightKey]: presetHeight })
           }}
         />
       </Row>
-      <Row>
+      <Row label={props.showCustom ? 'Custom Size' : undefined}>
         {field(widthKey, 'Width', String(fallback.width), 'short c')}
         <span className="x times">×</span>
         {field(heightKey, 'Height', String(fallback.height), 'short c')}

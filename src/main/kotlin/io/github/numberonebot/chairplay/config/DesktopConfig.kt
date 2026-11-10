@@ -130,9 +130,10 @@ class DesktopConfig private constructor(private val dir: Path, startedWith: Desk
     /** altscreen.width and altscreen.height, on or off: the AltScreen's window waits at this size while it is off. */
     val altscreenSize = WindowSize(settings.evenSetting("altscreen.width", DEFAULT_ALTSCREEN_WIDTH), settings.evenSetting("altscreen.height", DEFAULT_ALTSCREEN_HEIGHT))
 
+    val clusterProfile: ClusterProfile? = settings.takeIf { it.booleanSetting("altscreen.enabled", false) }?.getProperty("altscreen.profile")?.trim()?.ifEmpty { null }?.let { ClusterProfiles(dir).load(it) }
     val altscreen: Altscreen? = if (!settings.booleanSetting("altscreen.enabled", false)) null else {
         val content = settings.choiceSetting("altscreen.content", AltscreenContent.MAP_CARD, AltscreenContent.entries.associateBy { it.key })
-        val size = altscreenSize
+        val size = clusterProfile?.size ?: altscreenSize
         val cards = settings.choiceSetting("altscreen.cards", AltscreenCards.TOP, AltscreenCards.entries.associateBy { it.key })
         Altscreen(size, content, cards, settings.booleanSetting("altscreen.hud.stream", false))
     }
@@ -141,13 +142,13 @@ class DesktopConfig private constructor(private val dir: Path, startedWith: Desk
     private val viewParts = altscreen?.let { alt -> AltscreenViewParts(alt.size.width, alt.size.height) { settings.getProperty(it) } }
 
     /** The view areas an enabled AltScreen declares: every part of its frame, again for each view with its margins. */
-    private val altscreenAreas = viewParts?.areas
+    private val altscreenAreas = clusterProfile?.areas ?: viewParts?.areas
 
     /** How many view areas the AltScreen declared; 0 without an AltScreen. */
     val altscreenAreaCount: Int = altscreenAreas?.size ?: 0
 
     /** The view area [content] shows in on the AltScreen, which it moves to as the view changes; 0 for the first. */
-    fun altscreenAreaFor(content: AltscreenContent): Int = viewParts?.indexOf(content) ?: 0
+    fun altscreenAreaFor(content: AltscreenContent): Int = clusterProfile?.initialArea ?: viewParts?.indexOf(content) ?: 0
 
     /** altscreen.<group>.area: what [content] is set to show in, the whole frame without an AltScreen or for the HUD. */
     fun altscreenChoice(content: AltscreenContent): AreaChoice = viewParts?.choiceOf(content) ?: AreaChoice.Preset(AreaPreset.FULL)
@@ -156,13 +157,13 @@ class DesktopConfig private constructor(private val dir: Path, startedWith: Desk
      * The view area [content] shows in when set to [choice], among the ones this connection declared: a part set since,
      * while CarPlay runs, is one of them.
      */
-    fun altscreenAreaIndex(content: AltscreenContent, choice: AreaChoice): Int = viewParts?.indexOf(content, choice) ?: 0
+    fun altscreenAreaIndex(content: AltscreenContent, choice: AreaChoice): Int = clusterProfile?.initialArea ?: viewParts?.indexOf(content, choice) ?: 0
 
     /** What reading the AltScreen's parts had to put right, such as a rectangle clamped into a smaller frame. */
     val altscreenWarnings: List<String> = viewParts?.warnings.orEmpty()
 
     /** The AltScreen as /info declares it; null when off. The iPhone learns of it only when it connects. */
-    private val altscreenDisplay = altscreen?.let { altscreenDisplay(it, settings, altscreenAreas) }
+    private val altscreenDisplay = altscreen?.let { clusterProfile?.display() ?: altscreenDisplay(it, settings, altscreenAreas) }
 
     /** gps.*: the spoofed GPS and the car that drives it; the iPhone learns of the GPS when it connects. */
     val gps = settings.gpsSettings()

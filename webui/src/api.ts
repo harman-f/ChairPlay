@@ -38,6 +38,8 @@ export type WindowsPlace =
   | 'rgi'
   | 'logs'
   | 'screenshots'
+  | 'profiles'
+  | 'overlays'
 
 /** What the controls window shows beside its buttons (UiControls in Main.kt). */
 export interface ControlsState {
@@ -46,6 +48,8 @@ export interface ControlsState {
   volume: { level: number; muted: boolean }
   /** What the AltScreen shows; null without an AltScreen. */
   altscreen: AltscreenContent | null
+  /** The car's cluster view the AltScreen shows with altscreen.profile, which View steps; null or absent without one. */
+  carView?: number | null
   /** Alt is held in one of ChairPlay's windows: the buttons show their keys. */
   altHeld: boolean
   globalKeyboard?: { enabled: boolean; error: string | null }
@@ -95,7 +99,29 @@ export interface GpsState {
   sentences: string[] | null
   /** Position updates sent in this connection. */
   sent: number
+  /** gps.route as read: its file, its length and how far along the car is, in km, and whether it plays. */
+  route?: { name: string; km: number; at: number; playing: boolean } | null
+  /** Why gps.route could not be read. */
+  routeError?: string | null
 }
+
+/** A car's cluster profile, profiles\<id>.json: its JSON text, and whether the app carries it (it comes back deleted). */
+export interface ClusterProfileFile {
+  id: string
+  text: string
+  builtIn: boolean
+}
+
+/** The car profiles in the app folder, and the one altscreen.profile names, if it reads. */
+export interface ClusterProfilesData {
+  profiles: ClusterProfileFile[]
+  active?: string | null
+  /** Reusable overlay drawings from overlays/<id>.json. */
+  overlays?: { id: string; text: string }[]
+}
+
+/** What the GPS page asks of the route: keep a GPX file, or play, pause or restart it. */
+export type RouteAction = 'load' | 'play' | 'pause' | 'restart'
 
 /** A window is available while its feature is on; only then can it be shown or hidden. */
 export interface WindowState {
@@ -209,6 +235,8 @@ export interface Backend {
   save(changes: Record<string, string>): Promise<SaveOutcome>
   /** The saved Wi-Fi password, for the eye beside it; null when none is saved. Nothing else carries it. */
   savedPassphrase(): Promise<string | null>
+  /** Capture one screen to numbered screenshots, including the active Controller view in its filename. */
+  screenshot(target: 'main' | 'altscreen'): Promise<boolean>
   /** Plays a HUD demo on the AltScreen, or stops it (null); false when none can play. */
   demo(kind: DemoKind | null): Promise<boolean>
   /** Sets the app's volume to [level] percent, unmuting it. */
@@ -217,6 +245,17 @@ export interface Backend {
   windowsLocation(): Promise<WindowsLocation>
   /** Turns drive mode on or off, as F10 does; false while the GPS is off. */
   driveMode(on: boolean): Promise<boolean>
+  /**
+   * The GPS car's route: 'load' keeps a GPX file's [gpx] text as [name] in the app folder and answers its path for
+   * gps.route; the rest play, pause or restart it. An error says why not.
+   */
+  gpsRoute(action: RouteAction, name?: string, gpx?: string): Promise<{ path?: string; error?: string }>
+  /** The car profiles in the app folder. */
+  clusterProfiles(): Promise<ClusterProfilesData>
+  /** Keeps [text] as car profile [id], or deletes it while [text] is null; why not, else null. */
+  saveClusterProfile(id: string, text: string | null): Promise<string | null>
+  /** Write a reusable overlay file; views reference it by ID. */
+  saveClusterOverlay(id: string, text: string): Promise<string | null>
   /** Null when connecting started, else why not. */
   connect(): Promise<string | null>
   reconnect(): Promise<void>

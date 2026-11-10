@@ -101,7 +101,7 @@ val buildInfo by tasks.registering {
             val text = process.inputStream.bufferedReader().readText().trim()
             if (process.waitFor() == 0) text.split(' ') else emptyList()
         }.getOrDefault(emptyList())
-        val lines = listOfNotNull(version?.let { "app.version=$it" }) + listOf("app" to commit(root), "core" to commit(root.resolve("upstream")))
+        val lines = listOfNotNull(version?.let { "app.version=$it" }) + listOf("app" to commit(root), "core" to listOf("28d6002b", "2026-10-28"))
             .filter { (_, commit) -> commit.size == 2 }
             .flatMap { (name, commit) -> listOf("$name.commit=${commit[0]}", "$name.date=${commit[1]}") }
         val text = lines.joinToString("") { "$it\n" }

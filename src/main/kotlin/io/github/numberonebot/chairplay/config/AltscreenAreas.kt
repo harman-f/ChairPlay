@@ -164,6 +164,53 @@ class AltscreenViewParts(width: Int, height: Int, value: (String) -> String?) {
     fun indexOf(content: AltscreenContent): Int = indexOf(content, choiceOf(content))
 }
 
+/** The iPhone still has the last negotiated geometry after a local profile edit. */
+fun clusterGeometryMatchesNegotiated(negotiated: ClusterProfile?, live: ClusterProfile?): Boolean =
+    when {
+        negotiated == null -> live == null
+        live == null -> false
+        else -> negotiated.size == live.size && negotiated.safeAreas == live.safeAreas
+    }
+
+/** The stream begins at the connection's initial area, not a later profile edit. */
+fun negotiatedInitialArea(negotiated: ClusterProfile?): Int = negotiated?.initialArea ?: 0
+
+/** Deterministic control-plane plan shared by AltscreenView.show and JVM regression tests. */
+enum class ClusterAreaDecision { SHOW, MOVE, WAIT, RECONNECT }
+
+fun clusterAreaDecision(
+    session: Boolean, seen: Boolean, requested: Int, current: Int,
+    geometryMatches: Boolean, settling: Boolean,
+): ClusterAreaDecision = when {
+    !session || !seen -> ClusterAreaDecision.SHOW
+    requested != current && !geometryMatches -> ClusterAreaDecision.RECONNECT
+    requested != current -> ClusterAreaDecision.MOVE
+    settling -> ClusterAreaDecision.WAIT
+    else -> ClusterAreaDecision.SHOW
+}
+
+/** A settle completion and its actual showUI decision share the invalidation lock. */
+class AreaMoveSettleGate {
+    private var revision = 0L
+    private var pending = false
+    private var askRevision = 0L
+
+    @Synchronized fun start(): Long { pending = true; ++askRevision; return ++revision }
+    @Synchronized fun invalidate() { ++revision; ++askRevision; pending = false }
+    @Synchronized fun invalidateAsk() { ++askRevision }
+    @Synchronized fun nextAsk(): Long = ++askRevision
+    /** VideoWindow.onBlack runs on its own view-ask thread, after show() returns. */
+    @Synchronized fun dispatchAsk(ticket: Long, action: () -> Boolean): Boolean =
+        if (ticket != askRevision) false else action()
+    @Synchronized fun isPending(): Boolean = pending
+    @Synchronized fun completeIfCurrent(ticket: Long, action: () -> Unit): Boolean {
+        if (!pending || revision != ticket) return false
+        pending = false
+        action()
+        return true
+    }
+}
+
 /**
  * updateViewArea for the AltScreen: DiPlay's AirPlayInfoPlist.viewAreaCommand, which it sends for the main screen
  * alone, with the AltScreen's display. The iPhone acted on the main screen's only with the animation and the adjacent
@@ -192,7 +239,9 @@ class AltscreenAreaMove(
 ) {
     /** False when the iPhone was not sent the move. */
     operator fun invoke(index: Int): Boolean {
-        if (!send(altscreenViewAreaCommand(index, count()))) return false
+        val n = count()
+        if (n <= 1 || index !in 0 until n) return false
+        if (!send(altscreenViewAreaCommand(index, n))) return false
         showView()
         return true
     }

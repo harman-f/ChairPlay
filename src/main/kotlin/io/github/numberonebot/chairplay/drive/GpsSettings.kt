@@ -25,24 +25,37 @@ data class GpsSettings(
     val wheel: WheelMode = WheelMode.STEERING,
     /** gps.units: the speedometer scale and speed readouts; applied immediately. */
     val units: SpeedUnits = SpeedUnits.METRIC,
+    /** gps.route: a GPX file in the app folder the car follows when played; null for none. */
+    val route: String? = null,
+    /** gps.route.speed: how fast it goes there between the corners, in km/h. */
+    val routeSpeedKmh: Double = 50.0,
 ) {
     companion object {
         val RATES = listOf(1, 4, 10)
         val POWER_HP = 20.0..2000.0
         val MASS_KG = 300.0..10000.0
+        val ROUTE_KMH = 5.0..250.0
 
         /** A heading in degrees, from 0 up to but not 360. */
         fun heading(text: String): Double? = text.trim().toDoubleOrNull()?.takeIf { it >= 0.0 && it < 360.0 }
     }
 }
 
-/** How large drive mode's gauges show: as tall as the window, or half that, down in its corners. */
+/**
+ * How large drive mode's gauges show: as tall as the window, or half that, down in its corners; or hidden, the speed
+ * alone in a line at the bottom, for a cluster of the car's own (altscreen.profile) the wells would cover.
+ */
 enum class GaugeSize(val key: String) {
     LARGE("large"),
-    SMALL("small");
+    SMALL("small"),
+    HIDDEN("hidden");
 
-    fun other(): GaugeSize = if (this == LARGE) SMALL else LARGE
+    /** Shift+F10's next size: large, small, hidden and round again. */
+    fun other(): GaugeSize = entries[(ordinal + 1) % entries.size]
 }
+
+/** The wells [view] draws, none while its gauges are hidden. */
+fun wellsOf(view: GaugeView?): GaugeView? = view?.takeUnless { it.size == GaugeSize.HIDDEN }
 
 /**
  * What the gauges' steering wheel shows: the car's heading with north up ([HEADING], the red mark pointing where the car

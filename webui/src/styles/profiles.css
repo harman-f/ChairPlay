@@ -1,0 +1,20 @@
+/* The AltScreen page's car profiles: the file a route or a URL names, and the profile's JSON */
+
+.route-file {
+  overflow-wrap: anywhere;
+  opacity: 0.8;
+}
+
+.profile-json {
+  width: 100%;
+  min-height: 12em;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 6px;
+}

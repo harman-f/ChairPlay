@@ -27,13 +27,14 @@ export type { Section } from './sections'
 /** The phases in which a connection is being made, from the start to CarPlay's picture, a retry among them. */
 const CONNECTING_PHASES = ['starting', 'calling', 'joining', 'retrying'] as const
 
-export function Shell({ state, backend }: { state: AppState; backend: Backend }) {
+export function Shell({ state, backend, standalone = false }: { state: AppState; backend: Backend; standalone?: boolean }) {
   const [section, setSection] = useState<Section>('connection')
   // Get started shows on its own until the setup is done, unless skipped; Show again opens it whatever.
   const [guide, setGuide] = useState<'auto' | 'shown' | 'skipped'>('auto')
   const [joinFailureSeen, setJoinFailureSeen] = useState<string | null>(null)
   const ids = useId()
-  const showable = state.canShowCarPlay && state.embedded
+  // In a window of their own (/settings) the settings never give way to CarPlay: no Escape to it, no fade, no wait.
+  const showable = state.canShowCarPlay && state.embedded && !standalone
   const restart = new Set(sectionsOf(state.restartPending))
   const settings = useSettings(backend, state.settingsVersion)
   const guiding = guide === 'shown' || (guide === 'auto' && !state.setupDone)
@@ -62,14 +63,14 @@ export function Shell({ state, backend }: { state: AppState; backend: Backend })
   }, [backend, showable])
 
   // Connecting on its own the app waits, black, instead of showing the settings, until CarPlay covers it.
-  if (state.waiting) return <Waiting state={state} backend={backend} />
+  if (state.waiting && !standalone) return <Waiting state={state} backend={backend} />
 
   // CarPlay is to show: the window hides the page a fade's time later (Fade.kt), so it fades to black meanwhile.
-  const away = state.embedded && state.screen === 'carplay'
+  const away = !standalone && state.embedded && state.screen === 'carplay'
 
   return (
     <div className={`shell ${away ? 'away' : ''}`}>
-      <Toolbar state={state} backend={backend} guide={steps} />
+      <Toolbar state={state} backend={backend} guide={steps} standalone={standalone} />
       {steps ? (
         <div className="body setup-body">
           {settings.data && (

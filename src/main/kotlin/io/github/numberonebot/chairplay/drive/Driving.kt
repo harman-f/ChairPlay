@@ -17,6 +17,8 @@ class Driving(
     gamepad: () -> FloatArray? = GlfwGamepad::axes,
     private val nanoTime: () -> Long = System::nanoTime,
     private val satelliteSentences: (GeoPoint, Long) -> String? = { _, _ -> null },
+    /** The text of gps.route's file, by the setting's value; the app reads it from its folder. */
+    private val routeText: (String) -> String = { throw IllegalArgumentException("no route files") },
 ) {
     /** Saves the car's place as gps.start and gps.heading, as the GPS page saves them; the app sets it. */
     @Volatile var savePlace: (Map<String, String>) -> Unit = {}
@@ -39,6 +41,14 @@ class Driving(
     }
 
     val control = DriveControl(drive, gamepad, onStopped = ::remember, nanoTime = nanoTime)
+
+    /** Why gps.route could not be read, for the GPS page; null with a route or none set. */
+    @Volatile var routeError: String? = null
+        private set
+
+    init {
+        loadRoute(settings)
+    }
 
     @Volatile private var link: DriveLocation? = null
 
@@ -95,6 +105,54 @@ class Driving(
             drive.respec(now.car)
             log("GPS car ${now.car.powerHp.roundToInt()} hp, ${now.car.massKg.roundToInt()} kg, ${now.car.handling.key} handling")
         }
+        if ("gps.route" in keys) loadRoute(now)
+        if ("gps.route.speed" in keys) drive.route?.cruiseKmh = now.routeSpeedKmh
+    }
+
+    /** Reads gps.route into the car's route, stopped at its start; none while blank, or unread, saying why. */
+    private fun loadRoute(now: GpsSettings) {
+        drive.route = null
+        routeError = null
+        val name = now.route ?: return
+        runCatching { GpxRoute.parse(name, routeText(name)) }
+            .onSuccess { route ->
+                drive.route = RoutePlayer(route, now.routeSpeedKmh)
+                log("GPS route $name: ${route.points.size} points, ${String.format(Locale.ROOT, "%.2f", route.length / 1000)} km")
+            }
+            .onFailure {
+                routeError = if (it is java.nio.file.NoSuchFileException) "$name not found. Choose the GPX file again" else it.message ?: it.toString()
+                log("GPS route $name not read: $routeError")
+            }
+    }
+
+    /**
+     * A GPX file kept as [path] anew: read again when gps.route already names it, as saving the same setting changes
+     * nothing; another path is read once the page saves it.
+     */
+    fun routeFileSaved(path: String) {
+        if (settings.route == path) loadRoute(settings)
+    }
+
+    /**
+     * The route's play, pause, toggle (F5) or restart; the reason when it cannot: no route, or the GPS off. Playing from
+     * the start puts the car there first. The next pass of the window loop moves it.
+     */
+    fun route(action: String): String? {
+        val player = drive.route ?: return routeError ?: "Choose a GPX route first"
+        if (!settings.enabled) return "Turn on the GPS first"
+        val play = when (action) {
+            "play" -> true
+            "pause" -> false
+            "toggle" -> !player.playing
+            "restart" -> player.restart().let { false }
+            else -> return "Unknown route action $action"
+        }
+        if (play && player.finished) player.restart()
+        if (player.distance == 0.0 && (play || action == "restart")) player.route.at(0.0).let { drive.place(it.position, it.headingDegrees) }
+        player.playing = play
+        placed = true
+        log("GPS route ${if (play) "playing" else if (action == "restart") "back at its start" else "paused"}")
+        return null
     }
 
     /** What the GPS page shows: the car's place and motion, the controls driving it, and what the iPhone asked for. */
@@ -115,12 +173,17 @@ class Driving(
             "listening" to (status?.listening ?: false),
             "sentences" to status?.requested?.map { SENTENCES[it] ?: "#$it" },
             "sent" to (status?.sent ?: 0L),
+            "route" to drive.route?.let { play ->
+                mapOf("name" to play.route.name, "km" to play.route.length / 1000, "at" to play.distance / 1000, "playing" to play.playing)
+            },
+            "routeError" to routeError,
         )
     }
 
     /** What the gauges show while drive mode is on; null when they are gone. */
     fun gauges(): GaugeView? {
-        if (!settings.enabled || !control.keyboard) return null
+        // Shown in drive mode, and while a route drives the car.
+        if (!settings.enabled || !(control.keyboard || drive.following)) return null
         val snapshot = drive.snapshot()
         val car = snapshot.car
         return GaugeView(

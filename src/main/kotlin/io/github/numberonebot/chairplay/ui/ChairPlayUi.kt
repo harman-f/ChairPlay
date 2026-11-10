@@ -24,7 +24,14 @@ interface UiDriving {
     fun gpsDrive(throttle: Double, brake: Double, steer: Double): Boolean
 
     fun screenshot(): Boolean
+    fun screenshotTarget(target: String): Boolean = screenshot()
+
+    /** See [UiApi.gpsRoute]; a driving without routes refuses them. */
+    fun gpsRoute(action: String, name: String?, gpx: String?): RouteAnswer = RouteAnswer(error = "No GPS route here")
 }
+
+/** What a route action came to: the [path] a loaded file was kept at, or why it failed ([error]); neither when done. */
+data class RouteAnswer(val path: String? = null, val error: String? = null)
 
 /**
  * The start and settings screens as the app runs them: the state machine, the settings file, the HTTP bridge on
@@ -63,7 +70,12 @@ class ChairPlayUi(
     gps: (() -> Map<String, Any?>)? = null,
     /** The GPS car's calls: drive mode, the car driven by a script, and the CarPlay screens saved. */
     private val driving: UiDriving? = null,
+    /** The cars' cluster profiles, for the AltScreen page. */
+    private val profiles: UiProfiles? = null,
     bufferedAudio: () -> Map<String, Any>? = { null },
+    /** window.settings.separate: the page in a window of its own ([settingsView]), never over CarPlay. */
+    private val separateSettings: Boolean = false,
+    private val liveLab: UiLiveLab? = null,
 ) : Closeable {
     val model = UiModel(config.wifi != null, config.autoconnect, config.autoshow, setupDone = SetupStore(dir).done())
 
@@ -122,9 +134,9 @@ class ChairPlayUi(
     /** Saves [changes] from one of the app's own keys, as a page saves them: the app and an open page hear of it alike. */
     fun saveSettings(changes: Map<String, String>) = controller.saveSettings(changes)
 
-    private val api = AppUiApi(controller) { driving }
+    private val api = AppUiApi(controller, { profiles }, { liveLab }) { driving }
 
-    private val server = UiServer(api, pageAssets(), System.getenv("CHAIRPLAY_UI_PORT")?.toIntOrNull() ?: 0, log = log)
+    private val server = UiServer(api, pageAssets(), System.getenv("CHAIRPLAY_UI_PORT")?.toIntOrNull() ?: 18765, log = log)
 
     /** The page in the main window; give it to the window before it opens. */
     val view: EmbeddedUi
@@ -135,6 +147,16 @@ class ChairPlayUi(
      */
     val controlsView: EmbeddedUi?
 
+    /**
+     * The settings window's page (window.settings.separate), always shown: /settings, which never goes black for CarPlay
+     * as the main window's page does. Without WebView2 it opens in the default browser instead.
+     */
+    val settingsView: EmbeddedUi?
+
+    /** Brings the settings window to the front: the car's button asked for the settings; set once the window exists. */
+    var onShowSettings: () -> Unit = {}
+    private var settingsAsked = false
+
     init {
         server.start()
         log("UI at ${server.url}")
@@ -142,9 +164,9 @@ class ChairPlayUi(
         val debug = System.getenv("CHAIRPLAY_UI_DEBUG") == "1"
         view = EmbeddedUi(
             server.url,
-            showsUi = { model.state.showsUi },
+            showsUi = { !separateSettings && model.state.showsUi },
             backend = { WebView2(userData, debug) },
-            openBrowser = WebView2::openInBrowser,
+            openBrowser = WebView2::openInBrowser.takeUnless { separateSettings },
             log = log,
             onEmbedded = { embedded ->
                 controller.embedded = embedded
@@ -162,11 +184,29 @@ class ChairPlayUi(
                 takesKeyboard = false,
             )
         }
-        model.addListener { wake() }
+        settingsView = if (!separateSettings) null else EmbeddedUi(
+            server.url.replaceFirst("/?", "/settings?"),
+            showsUi = { true },
+            backend = { WebView2(userData, debug) },
+            openBrowser = WebView2::openInBrowser,
+            log = { message -> log("settings window: $message") },
+            onEmbedded = { if (it) log("UI in its own window (WebView2)") },
+        )
+        model.addListener {
+            // In a window of their own, the settings asked for (the car's button) bring that window; once per asking.
+            // CarPlay's window then goes on showing CarPlay, so the next press asks again; outside the model's update.
+            val asked = separateSettings && model.state.showsUi
+            if (asked && !settingsAsked) {
+                onShowSettings()
+                Thread({ model.show(Screen.CARPLAY) }, "settings-window").apply { isDaemon = true }.start()
+            }
+            settingsAsked = asked
+            wake()
+        }
     }
 
     /** The page covers the window, so keys and the wheel are its, not CarPlay's. */
-    val coversWindow: Boolean get() = controller.embedded && model.state.showsUi
+    val coversWindow: Boolean get() = !separateSettings && controller.embedded && model.state.showsUi
 
     /** Whether the app connects as it starts: ui.autoconnect, once there is a Wi-Fi network. */
     val connectsAtStart: Boolean get() = model.state.phase == Phase.STARTING

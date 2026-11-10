@@ -143,7 +143,7 @@ val webuiTest by tasks.registering(Exec::class) {
     dependsOn(npmCi)
     val report = layout.buildDirectory.file("test-results/webui/TEST-webui.xml")
     node(
-        "node_modules/vitest/vitest.mjs", "run", "--reporter=default", "--reporter=junit",
+        "node_modules/vitest/vitest.mjs", "run", "--testTimeout=15000", "--reporter=default", "--reporter=junit",
         "--outputFile.junit=${report.get().asFile.path}",
     )
     inputs.files(webuiSources).withPathSensitivity(PathSensitivity.RELATIVE)

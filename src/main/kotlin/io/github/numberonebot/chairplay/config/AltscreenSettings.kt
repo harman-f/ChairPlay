@@ -46,8 +46,12 @@ fun altscreenUrl(content: AltscreenContent, cards: AltscreenCards): String =
  * which one is on, and the cards' place only where the view places them. AltScreen is Apple's name for it (the
  * altScreen feature and altScreenURLs).
  */
-fun altscreenTitle(stream: WindowSize, content: AltscreenContent, cards: AltscreenCards): String =
-    "AltScreen · ${stream.width}×${stream.height} · ${content.key}" + if (content.placesCards) " · cards ${cards.key}" else ""
+fun altscreenTitle(stream: WindowSize, content: AltscreenContent, cards: AltscreenCards, car: String? = null): String =
+    "AltScreen · ${stream.width}×${stream.height} · ${content.key}" + when {
+        car != null -> " · $car"
+        content.placesCards -> " · cards ${cards.key}"
+        else -> ""
+    }
 
 /** The second CarPlay screen, a car's instrument cluster: the stream's [size] and what it starts with. */
 data class Altscreen(

@@ -1,5 +1,5 @@
 import type { AppState, Backend } from '../api'
-import { Group, Row } from '../shell/controls'
+import { Group, Row, Segmented, Switch, type Choice } from '../shell/controls'
 import type { Settings } from '../shell/useSettings'
 import { AlwaysOnTop } from './AlwaysOnTop'
 import { ActualSize, Changed, parts, pendingOf, SafeArea, SizeRows } from './parts'
@@ -27,6 +27,9 @@ const DISPLAY_KEYS = [
   'display.physical.height.mm',
   'display.ppi',
 ]
+const MAIN_ZOOM: readonly Choice[] = [['', 'Auto'], ['70', '70 %'], ['85', '85 %'], ['100', '100 %'], ['125', '125 %'], ['150', '150 %']]
+const PHYSICAL_ZOOM: readonly Choice[] = [['50', '50 %'], ['70', '70 %'], ['85', '85 %'], ['100', '100 %'], ['125', '125 %'], ['150', '150 %']]
+
 const LOOK_KEYS = [
   'display.theme',
   'display.dock',
@@ -41,6 +44,16 @@ export function CarPlayPage({ state, backend, settings }: { state: AppState; bac
   const pending = pendingOf(state)
   const { field, choice, note } = parts(settings, pending)
   const displayFallback = settings.data?.display ?? { width: 1280, height: 720 }
+  const pixelsWidth = Number(settings.value('display.width')) || displayFallback.width
+  const pixelsHeight = Number(settings.value('display.height')) || displayFallback.height
+  const ppi = Number(settings.value('display.ppi')) || 0
+  const widthEntered = Number(settings.value('display.physical.width.mm')) || 0
+  const physicalWidth = widthEntered || (ppi ? Math.round(pixelsWidth * 25.4 / ppi) : 200)
+  const physicalHeight = Number(settings.value('display.physical.height.mm')) ||
+    (ppi && !widthEntered ? Math.round(pixelsHeight * 25.4 / ppi) : Math.round(physicalWidth * pixelsHeight / pixelsWidth))
+  const physicalZoom = Number(settings.value('display.physical.zoom')) || 100
+  const effectiveWidth = Math.max(1, Math.round(physicalWidth * 100 / physicalZoom))
+  const effectiveHeight = Math.max(1, Math.round(physicalHeight * 100 / physicalZoom))
   return (
     <>
       <Group title="Display" note={note(DISPLAY_KEYS)} />
@@ -63,6 +76,22 @@ export function CarPlayPage({ state, backend, settings }: { state: AppState; bac
         {field('display.ppi', 'Pixels per inch', 'auto', 'short c')}
         <span className="unit">ppi</span>
         <Changed keys={['display.physical.width.mm', 'display.physical.height.mm', 'display.ppi']} pending={pending} />
+      </Row>
+      <Group title="Scaling" note="Main CarPlay display · effective values sent when CarPlay reconnects" />
+      <Row label="Zoom factor" title="iOS Smart Display Zoom factor for main display, omitted when Auto">
+        <Segmented label="Zoom factor" value={settings.value('display.zoom.factor')} options={MAIN_ZOOM}
+          onChange={(value) => void settings.save({ 'display.zoom.factor': value })} />
+      </Row>
+      <Row label="Physical zoom" title="Scales the main display's advertised physical millimetres independently">
+        <Segmented label="Physical zoom" columns={3} value={String(physicalZoom)} options={PHYSICAL_ZOOM}
+          onChange={(value) => void settings.save({ 'display.physical.zoom': value })} />
+      </Row>
+      <Row label="Effective size"><span>{effectiveWidth} × {effectiveHeight} mm (reported to iOS)</span></Row>
+      <Row>
+        <span className="hint">Main display defaults: 1280 × 720 px and 200 × 113 mm. Both scaling settings require a CarPlay reconnect.</span>
+        <button type="button" className="btn small" disabled={!state.canShowCarPlay} onClick={() => void backend.reconnect()}>
+          Reconnect CarPlay
+        </button>
       </Row>
       <Row label="Frame rate">
         {choice(
@@ -100,6 +129,14 @@ export function CarPlayPage({ state, backend, settings }: { state: AppState; bac
         </span>
       </Row>
       <AlwaysOnTop settings={settings} setting="window.always.on.top" />
+      <Row title="The settings in a window of their own, CarPlay's window always showing CarPlay; the car's button brings them">
+        <Switch
+          label="Settings in their own window"
+          checked={settings.value('window.settings.separate') === 'true'}
+          onChange={(checked) => settings.save({ 'window.settings.separate': String(checked) })}
+        />
+        <Changed keys={['window.settings.separate']} pending={pending} />
+      </Row>
       <Group title="Appearance" note={note(LOOK_KEYS)} />
       <Row label="Theme">
         {choice('display.theme', 'Theme', 'windows', [

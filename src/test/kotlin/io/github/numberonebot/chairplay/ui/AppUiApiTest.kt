@@ -33,15 +33,18 @@ class AppUiApiTest : UiControllerFixture() {
         assertFalse(api.driveMode(true))
         assertFalse(api.gpsDrive(1.0, 0.0, 0.0))
         assertFalse(api.screenshot())
+        assertFalse(api.screenshotTarget("main"))
 
         val calls = mutableListOf<String>()
         driving = object : UiDriving {
             override fun driveMode(on: Boolean) = true.also { calls += "mode $on" }
             override fun gpsDrive(throttle: Double, brake: Double, steer: Double) = true.also { calls += "drive $throttle" }
             override fun screenshot() = true.also { calls += "shot" }
+            override fun screenshotTarget(target: String) = true.also { calls += "shot $target" }
         }
 
         assertTrue(api.driveMode(true) && api.gpsDrive(1.0, 0.0, 0.0) && api.screenshot())
-        assertEquals(listOf("mode true", "drive 1.0", "shot"), calls)
+        assertTrue(api.screenshotTarget("altscreen"))
+        assertEquals(listOf("mode true", "drive 1.0", "shot", "shot altscreen"), calls)
     }
 }

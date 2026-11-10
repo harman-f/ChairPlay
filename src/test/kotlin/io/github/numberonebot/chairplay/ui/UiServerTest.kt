@@ -42,6 +42,21 @@ class UiServerTest {
     }
 
     @Test
+    fun `the experimental localhost lab and screenshot work without a token`() {
+        fun noTokenPost(route: String): HttpResponse<String> {
+            val request = HttpRequest.newBuilder(URI("$base/api/$route"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(if (route == "live-lab") "{\"op\":\"status\"}" else "{}"))
+                .build()
+            return client.send(request, HttpResponse.BodyHandlers.ofString())
+        }
+        assertEquals(200, noTokenPost("live-lab").statusCode())
+        assertEquals(200, noTokenPost("screenshot").statusCode())
+        assertEquals(401, get("/api/state", token = null).statusCode())
+        assertEquals(401, get("/api/settings", token = null).statusCode())
+    }
+
+    @Test
     fun `the API needs the token`() {
         assertEquals(401, get("/api/state", token = null).statusCode())
         assertEquals(401, get("/api/state", token = "wrong").statusCode())

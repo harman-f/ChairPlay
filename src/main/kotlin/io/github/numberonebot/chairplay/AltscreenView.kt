@@ -1,14 +1,21 @@
 package io.github.numberonebot.chairplay
 
 import com.shilapi.xcertplay.airplay.AirPlaySession
+import io.github.numberonebot.chairplay.cluster.CarViews
 import io.github.numberonebot.chairplay.config.ALTSCREEN_MIN_WIDTH
 import io.github.numberonebot.chairplay.config.AREA_MOVE_SETTLE_MILLIS
 import io.github.numberonebot.chairplay.config.AltscreenAreaMove
 import io.github.numberonebot.chairplay.config.AltscreenCards
 import io.github.numberonebot.chairplay.config.AltscreenContent
+import io.github.numberonebot.chairplay.config.ClusterProfile
 import io.github.numberonebot.chairplay.config.DesktopConfig
 import io.github.numberonebot.chairplay.config.WindowSize
 import io.github.numberonebot.chairplay.config.altscreenTitle
+import io.github.numberonebot.chairplay.config.clusterGeometryMatchesNegotiated
+import io.github.numberonebot.chairplay.config.negotiatedInitialArea
+import io.github.numberonebot.chairplay.config.AreaMoveSettleGate
+import io.github.numberonebot.chairplay.config.ClusterAreaDecision
+import io.github.numberonebot.chairplay.config.clusterAreaDecision
 import io.github.numberonebot.chairplay.config.altscreenUrl
 import io.github.numberonebot.chairplay.config.drawnView
 import io.github.numberonebot.chairplay.config.fittedTo
@@ -33,6 +40,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -92,7 +100,11 @@ internal class AltscreenView(
     private val declared = AtomicReference(config)
     private val areaFor = AtomicReference<(AltscreenContent) -> Int>(config::altscreenAreaFor)
     private val currentArea = AtomicInteger(0)
+    private val areaSettleGate = AreaMoveSettleGate()
+    private val streamGeneration = AtomicLong(0)
+    @Volatile private var streamResetPending = false
     private val areaTimer = Executors.newSingleThreadScheduledExecutor { Thread(it, "view-area").apply { isDaemon = true } }
+    val carViews = CarViews(window::repaint).also { it.connected(config.clusterProfile) }
 
     init {
         settings.get()?.let { log("altscreen ${it.size.width}x${it.size.height} px, starting with ${it.content.key}") }
@@ -111,19 +123,54 @@ internal class AltscreenView(
         val alt = settings.get() ?: return
         val content = content ?: return
         val cards = cards
+        if (streamResetPending && session != null) return
+        areaSettleGate.invalidateAsk()
         // Without a session there is no picture to show: the HUD says where the connection stands instead.
         val hud = content == AltscreenContent.HUD || hudDemo.get() != null || session == null
         // The iPhone draws a view only while it is seen, not with the window closed, and under the HUD only if kept.
         val drawn = drawnView(content, mapView, hud, alt.streamUnderHud).takeIf { session != null }
         val seen = drawn != null && window.visible
-        val url = altscreenUrl(drawn ?: content, cards)
-        val area = areaFor.get()(drawn ?: content)
-        if (session != null && seen && area != currentArea.get()) {
+        val (area, url) = carViews.target(areaCount.get()) ?: (areaFor.get()(drawn ?: content) to altscreenUrl(drawn ?: content, cards))
+        // HUD/hidden transitions must send stopUI promptly, never behind a stale settle.
+        if (hud || !seen) areaSettleGate.invalidate()
+        val geometryPendingReconnect = session != null &&
+            !clusterGeometryMatchesNegotiated(declared.get().clusterProfile, carViews.profile)
+        val decision = clusterAreaDecision(session != null, seen, area, currentArea.get(),
+            !geometryPendingReconnect, areaSettleGate.isPending())
+        when (decision) {
+            ClusterAreaDecision.WAIT -> {
+                window.setTitle(altscreenTitle(alt.size, content, cards, carViews.title()) + " (area settling)")
+                changed()
+                return
+            }
+            ClusterAreaDecision.RECONNECT -> {
+                areaSettleGate.invalidate()
+                log("altscreen Type111 geometry was not negotiated; reconnect required")
+                window.setTitle(altscreenTitle(alt.size, content, cards, carViews.title()) +
+                    " (area not applied; reconnect required)")
+                changed()
+                return
+            }
+            else -> Unit
+        }
+        if (decision == ClusterAreaDecision.MOVE && session != null) {
             val moved = AltscreenAreaMove(
                 count = areaCount::get,
                 send = { command -> session.sendCommand(command).also { log("altscreen view area $area of ${areaCount.get()} for ${content.key} sent=$it") } },
                 showView = {
-                    areaTimer.schedule({ runCatching { touchSender.execute { show(session) } } }, AREA_MOVE_SETTLE_MILLIS, TimeUnit.MILLISECONDS)
+                    val ticket = areaSettleGate.start()
+                    val streamAtSend = streamGeneration.get()
+                    areaTimer.schedule({
+                        runCatching {
+                            touchSender.execute {
+                                if (active() === session && streamGeneration.get() == streamAtSend) {
+                                    areaSettleGate.completeIfCurrent(ticket) {
+                                        if (active() === session && streamGeneration.get() == streamAtSend) show(session)
+                                    }
+                                }
+                            }
+                        }
+                    }, AREA_MOVE_SETTLE_MILLIS, TimeUnit.MILLISECONDS)
                 },
             )(area)
             if (moved) {
@@ -133,17 +180,35 @@ internal class AltscreenView(
                 if (window.hud && !hud) window.showView(false, seen)
                 return
             }
+            // A refused request cannot claim the new view or send showUI.
+            areaSettleGate.invalidate()
+            log("altscreen Type111 area change refused or not sent; keeping area " + currentArea.get())
+            window.setTitle(altscreenTitle(alt.size, content, cards, carViews.title()) +
+                " (area not sent)")
+            changed()
+            return
         }
         // Going to or from the HUD, or unseen, the window goes black before the iPhone is asked for the view, and stays so
         // until the view is in. Between its own views the iPhone blurs from one to the next itself: the key leaves the
         // URL out, so the window asks at once and shows the stream on.
+        val askTicket = areaSettleGate.nextAsk()
+        val streamAtAsk = streamGeneration.get()
         window.showView(hud, seen) {
-            val sent = session?.let { ui.tell(AltscreenUi.of(it), url, seen, key = it) }
+            areaSettleGate.dispatchAsk(askTicket) {
+                if (streamGeneration.get() != streamAtAsk || active() !== session ||
+                    (streamResetPending && session != null)) return@dispatchAsk false
+                val sent = session?.let { ui.tell(AltscreenUi.of(it), url, seen, key = it) }
             // A view stopped leaves no picture to come back to: the next one waits on black for the iPhone's.
             if (!seen) window.clearPicture()
             if (session != null) log("altscreen ${content.key}, cards ${cards.key}: $url ${if (seen) "showUI" else "stopUI"} sent=$sent")
-            window.setTitle(altscreenTitle(alt.size, content, cards) + if (sent == false) " (not sent)" else "")
-            (seen && drawing == url).also { drawing = url.takeIf { seen } }
+            window.setTitle(altscreenTitle(alt.size, content, cards, carViews.title()) +
+                when {
+                    sent == false -> " (not sent)"
+                    geometryPendingReconnect -> " (geometry pending reconnect)"
+                    else -> ""
+                })
+                (seen && drawing == url).also { drawing = url.takeIf { seen } }
+            }
         }
         changed()
     }
@@ -156,15 +221,14 @@ internal class AltscreenView(
         if (on) window.setShown(true)
     }
 
-    /** F11 switches the HUD and the view picked last, a view chosen shows, Shift+F11 moves the turn card: with [session]. */
-    fun step(control: Control, session: AirPlaySession) {
+    /** F11 toggles the HUD, a view chosen shows, Shift+F11 moves the card or, with a profile, is View ([Control.CarView]). */
+    fun step(control: Control, session: AirPlaySession?) {
         val content = content ?: return
-        // Shift+F11 has a turn card to move on Map + card alone.
-        if (control == Control.NextAltscreenCards && !content.placesCards) return
+        if (carViews.current == null && (control == Control.CarView || control == Control.NextAltscreenCards && !content.placesCards)) return
         when (control) {
             Control.NextAltscreenContent -> this.content = content.toggled(mapView)
             is Control.ShowAltscreenContent -> this.content = control.content
-            else -> cards = cards.next()
+            else -> if (carViews.next()) this.content = if (content == AltscreenContent.HUD) mapView else content else cards = cards.next()
         }
         this.content?.takeIf { it != AltscreenContent.HUD }?.let { mapView = it }
         show(session)
@@ -189,14 +253,32 @@ internal class AltscreenView(
 
     /** Each new AltScreen stream starts on the iPhone's initial view: it is told what the window shows now. */
     fun newStream() {
+        val streamAtEvent = synchronized(areaSettleGate) {
+            areaSettleGate.invalidate()
+            streamResetPending = true
+            streamGeneration.incrementAndGet()
+        }
         ui.newStream()
         runCatching {
             touchSender.execute {
-                // It starts in the first view area again, as on the initial view; the view goes back to its own.
-                currentArea.set(0)
+                if (streamGeneration.get() != streamAtEvent) return@execute
+                streamResetPending = false
+                // The phone starts from the descriptor negotiated for this connection.
+                currentArea.set(negotiatedInitialArea(declared.get().clusterProfile))
                 drawing = null
                 show(active())
             }
+        }
+    }
+
+    /**
+     * A live edit of the active profile changes the current view URL on the existing iPhone connection.
+     * Schedule this with other control-plane sends; geometry/zoomFactor remain negotiated until reconnect.
+     */
+    fun profileSaved(updated: ClusterProfile) {
+        touchSender.execute {
+            carViews.profile = updated
+            show(active())
         }
     }
 
@@ -210,6 +292,11 @@ internal class AltscreenView(
      * stream brings the view back ([newStream]). None once the app closes.
      */
     fun sessionGone() {
+        synchronized(areaSettleGate) {
+            areaSettleGate.invalidate()
+            streamResetPending = false
+            streamGeneration.incrementAndGet()
+        }
         runCatching { touchSender.execute { show(null) } }
     }
 
@@ -218,10 +305,15 @@ internal class AltscreenView(
      * and the view it starts with.
      */
     fun connected(now: DesktopConfig) {
+        synchronized(areaSettleGate) {
+            areaSettleGate.invalidate()
+            streamResetPending = false
+            streamGeneration.incrementAndGet()
+        }
         areaCount.set(now.altscreenAreaCount)
         declared.set(now)
         areaFor.set(now::altscreenAreaFor)
-        currentArea.set(0)
+        currentArea.set(now.clusterProfile?.initialArea ?: 0)
         touchSender.execute {
             val alt = now.altscreen
             val was = settings.getAndSet(alt)
@@ -237,7 +329,7 @@ internal class AltscreenView(
             } else {
                 if (alt.size != window.stream) window.setStream(alt.size, WindowSize(ALTSCREEN_MIN_WIDTH, 1).fittedTo(alt.size))
                 if (alt.size != was?.size) log("altscreen ${alt.size.width}x${alt.size.height} px from this connection on")
-                content = alt.content
+                content = alt.content.also { carViews.connected(now.clusterProfile) }
                 cards = alt.cards
                 show(null)
                 if (was == null) {
@@ -269,7 +361,7 @@ internal class AltscreenView(
             HudView(demo != null || active() != null, state, snapshot.artwork, gaugeMotion.there, gaugeMotion.smallness)
         }, ::log, window::repaint, accent)
         data.bus.addListener { if (window.hud) window.repaint() }
-        window.topLayer = GaugePainter(driving::gauges, ::log, accent, gaugeMotion, ::smallWellScale)
+        window.topLayer = carViews.over(GaugePainter(driving::gauges, ::log, accent, gaugeMotion, ::smallWellScale))
     }
 
     /**

@@ -16,6 +16,7 @@ import java.awt.image.BufferedImage
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
  * The CarPlay screen in a GLFW window. GLFW wants its window and event loop on one thread (the main
@@ -68,7 +69,7 @@ class VideoWindow(
     private val minimizing = AtomicBoolean()
     val commands = WindowCommands(::wake)
     fun toggleFullscreen() = commands.toggleFullscreen()
-    private val screenshotRequest = AtomicReference<((BufferedImage) -> Unit)?>()
+    private val screenshotRequests = ConcurrentLinkedQueue<Pair<Boolean, (BufferedImage) -> Unit>>()
     internal val titles = WindowTitle()
     private val shownRequest = AtomicReference<Boolean?>()
     private val resizeRequest = AtomicReference<WindowSize?>()
@@ -242,7 +243,13 @@ class VideoWindow(
      * its own. Nothing happens before the first picture.
      */
     fun screenshot(onImage: (BufferedImage) -> Unit) {
-        screenshotRequest.set(onImage)
+        screenshotRequests.add(false to onImage)
+        wake()
+    }
+
+    /** Capture the actual window composition including the Skoda overlay, not only the raw iPhone map. */
+    fun screenshotWithOverlays(onImage: (BufferedImage) -> Unit) {
+        screenshotRequests.add(true to onImage)
         wake()
     }
 
@@ -491,19 +498,21 @@ class VideoWindow(
             gl.restore()
         }
         drawFrame(gl, w[0], h[0])
-        val shot = screenshotRequest.getAndSet(null)
-        if (shot != null && showsHud) {
-            // The HUD is ours, not the iPhone's picture: save what the window shows.
+        val shot = screenshotRequests.poll()
+        if (shot != null && (showsHud || shot.first)) {
+            // For AltScreen, read the composed window before swapping: HUD, CarPlay and Skoda overlays.
             val pixels = gl.readFramebuffer(w[0], h[0])
             val (fw, fh) = w[0] to h[0]
-            Thread({ shot(screenshotImage(fw, fh, pixels)) }, "screenshot").apply { isDaemon = true }.start()
+            Thread({ shot.second(screenshotImage(fw, fh, pixels)) }, "screenshot").apply { isDaemon = true }.start()
         }
         glfwSwapBuffers(window)
         if (fresh != null) onFrameShown()
-        if (shot != null && !showsHud && shown != null) {
+        if (shot != null && !showsHud && !shot.first && shown != null) {
             val pixels = gl.readPicture(shown)
-            Thread({ shot(screenshotImage(shown.width, shown.height, pixels)) }, "screenshot").apply { isDaemon = true }.start()
+            Thread({ shot.second(screenshotImage(shown.width, shown.height, pixels)) }, "screenshot").apply { isDaemon = true }.start()
         }
+        // A burst of capture requests should not overwrite each other: draw the next queued image.
+        if (screenshotRequests.isNotEmpty()) wake()
         return true
     }
 

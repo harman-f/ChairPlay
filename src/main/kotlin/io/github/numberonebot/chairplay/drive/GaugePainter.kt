@@ -8,6 +8,7 @@ import io.github.numberonebot.chairplay.drive.GaugeStyle.EDGE
 import io.github.numberonebot.chairplay.drive.GaugeStyle.FACE
 import io.github.numberonebot.chairplay.drive.GaugeStyle.FACE_LIGHT
 import io.github.numberonebot.chairplay.drive.GaugeStyle.ITALIC
+import io.github.numberonebot.chairplay.drive.GaugeStyle.LABEL
 import io.github.numberonebot.chairplay.drive.GaugeStyle.OPAQUE
 import io.github.numberonebot.chairplay.drive.GaugeStyle.PANEL
 import io.github.numberonebot.chairplay.drive.GaugeStyle.RED
@@ -83,7 +84,10 @@ class GaugePainter(
     override val animating: Boolean get() = motion.animating
 
     override fun paint(width: Int, height: Int) {
-        val frame = motion.frame(view()) ?: return
+        val shown = view()
+        // Hidden, the wells go as drive mode's end takes them, and the speed stays in a line at the bottom.
+        if (shown?.size == GaugeSize.HIDDEN && width > 0 && height > 0) create()?.let { speedLine(it, shown, width.toFloat(), height.toFloat()) }
+        val frame = motion.frame(wellsOf(shown)) ?: return
         val now = frame.view
         if (width == 0 || height == 0) return
         val pen = create() ?: return
@@ -117,6 +121,19 @@ class GaugePainter(
                 pedalBar(pen, right + face * 0.18f, cy + face * 0.80f, face * 0.38f, face * 0.025f, now.brake, RED)
             }
         }
+        nvgEndFrame(pen.vg)
+    }
+
+    /** The speed alone, for hidden gauges: a small dark pill at the bottom's middle, out of the cluster's way. */
+    private fun speedLine(pen: NanoPen, view: GaugeView, w: Float, h: Float) {
+        val size = h * 0.05f
+        val text = "${view.speed.roundToInt()} ${view.units.symbol}"
+        val width = pen.textWidth(text, size, WIDE) + size * 1.2f
+        nvgBeginFrame(pen.vg, w, h, 1f)
+        nvgBeginPath(pen.vg)
+        nvgRoundedRect(pen.vg, (w - width) / 2, h - size * 2.4f, width, size * 1.6f, size * 0.8f)
+        pen.fill(SPEED_PILL)
+        pen.text(text, w / 2, h - size * 1.6f, size, LABEL, WIDE)
         nvgEndFrame(pen.vg)
     }
 
@@ -260,6 +277,7 @@ class GaugePainter(
         const val RIDGES = 180
         /** How large the wells are as they start coming and as they are gone. */
         const val COME_SCALE = 1.6f
+        const val SPEED_PILL = 0xB3000000.toInt()
         /** The rim's edges and its crest: dark steel lit to a soft grey. */
         const val RIM_EDGE = 0xFF141416.toInt()
         const val RIM_CREST = 0xFF6A6A72.toInt()

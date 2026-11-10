@@ -24,6 +24,14 @@ describe('ControlsScreen', () => {
   })
 
   // The wheel over the knob turns it, a step a notch, down moving the focus forward as the main window's wheel does.
+  it('takes separately numbered main and AltScreen screenshots from Controller', () => {
+    const backend = new FakeBackend()
+    render(<ControlsScreen state={appState(live)} backend={backend} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Screenshot main' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Screenshot AltScreen' }))
+    expect(backend.screenshots).toEqual(['main', 'altscreen'])
+  })
+
   it('turns the knob with the wheel', () => {
     const backend = new FakeBackend()
     render(<ControlsScreen state={appState(live)} backend={backend} />)

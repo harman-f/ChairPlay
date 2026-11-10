@@ -36,6 +36,7 @@ enum class ControlAction(val key: String, val defaults: String, val description:
     ALTSCREEN_ZOOM_IN("key.altscreen.zoom.in", "Equal, Shift+Equal, KP_Add", "zoom the AltScreen map in"),
     ALTSCREEN_ZOOM_OUT("key.altscreen.zoom.out", "Minus, KP_Subtract", "zoom the AltScreen map out"),
     ALTSCREEN_CARDS("key.altscreen.cards", "Shift+F11", "move the AltScreen's ETA and turn card: auto, left, right, top"),
+    ALTSCREEN_VIEW("key.altscreen.view", "V", "the car's View button: with altscreen.profile, the AltScreen shows the car's next cluster view"),
     VOLUME_UP("key.volume.up", "Ctrl+Up", "turn ChairPlay's own volume up (Windows' volume stays)"),
     VOLUME_DOWN("key.volume.down", "Ctrl+Down", "turn ChairPlay's own volume down"),
     VOLUME_MUTE("key.volume.mute", "Ctrl+M", "mute or unmute ChairPlay"),
@@ -44,6 +45,7 @@ enum class ControlAction(val key: String, val defaults: String, val description:
         yields = true,
     ),
     GAUGES("key.gauges", "Shift+F10", "switch the GPS car's gauges between large and small, and save it", yields = true),
+    ROUTE("key.route", "F5", "play or pause the GPS car's GPX route (gps.route)", yields = true),
 }
 
 /** A GLFW key code with the Shift, Ctrl and Alt bits that must be held. */

@@ -4,11 +4,13 @@ import type {
   AltscreenContent,
   AppState,
   Backend,
+  ClusterProfilesData,
   ControlsData,
   DemoKind,
   FolderSizes,
   KeyPhase,
   PictureWindow,
+  RouteAction,
   SaveOutcome,
   Screen,
   SettingsData,
@@ -56,6 +58,10 @@ export class Api implements Backend {
     return ((await this.request('GET', 'passphrase')).data as { passphrase: string | null }).passphrase
   }
 
+  async screenshot(target: 'main' | 'altscreen'): Promise<boolean> {
+    return (await this.request('POST', 'screenshot', { target })).status === 200
+  }
+
   async demo(kind: DemoKind | null): Promise<boolean> {
     return (await this.request('POST', 'demo', { kind })).status === 200
   }
@@ -70,6 +76,25 @@ export class Api implements Backend {
 
   async driveMode(on: boolean): Promise<boolean> {
     return (await this.request('POST', 'drive-mode', { on })).status === 200
+  }
+
+  async gpsRoute(action: RouteAction, name?: string, gpx?: string): Promise<{ path?: string; error?: string }> {
+    const { status, data } = await this.request('POST', 'gps-route', { action, name, gpx })
+    return status === 200 ? { path: data.path ?? undefined } : { error: data.error ?? `Error ${status}` }
+  }
+
+  async clusterProfiles(): Promise<ClusterProfilesData> {
+    return (await this.request('GET', 'cluster-profiles')).data as ClusterProfilesData
+  }
+
+  async saveClusterProfile(id: string, text: string | null): Promise<string | null> {
+    const { status, data } = await this.request('POST', 'cluster-profile', text === null ? { id, delete: true } : { id, text })
+    return status === 200 ? null : (data.error ?? `Error ${status}`)
+  }
+
+  async saveClusterOverlay(id: string, text: string): Promise<string | null> {
+    const { status, data } = await this.request('POST', 'cluster-overlay', { id, text })
+    return status === 200 ? null : (data.error ?? `Error ${status}`)
   }
 
   async showAltscreenFrame(view?: string): Promise<boolean> {

@@ -2,11 +2,13 @@
 import type {
   AltscreenContent,
   Backend,
+  ClusterProfilesData,
   ControlsData,
   DemoKind,
   FolderSizes,
   KeyPhase,
   PictureWindow,
+  RouteAction,
   SaveOutcome,
   Screen,
   SettingsData,
@@ -65,6 +67,12 @@ export class FakeBackend implements Backend {
     return this.passphrase
   }
 
+  screenshots: ('main' | 'altscreen')[] = []
+  async screenshot(target: 'main' | 'altscreen') {
+    this.screenshots.push(target)
+    return true
+  }
+
   /** The HUD demos asked for, null for a stop. */
   demos: (DemoKind | null)[] = []
 
@@ -94,6 +102,36 @@ export class FakeBackend implements Backend {
   async driveMode(on: boolean) {
     this.driveModes.push(on)
     return true
+  }
+
+  /** The route actions as the GPS page asked for them, a load with its file's name; the answer each gets. */
+  routeActions: string[] = []
+  routeAnswer: { path?: string; error?: string } = {}
+
+  async gpsRoute(action: RouteAction, name?: string) {
+    this.routeActions.push(name ? `${action} ${name}` : action)
+    return this.routeAnswer
+  }
+
+  /** The car profiles the page reads; what it saved (null text for a delete); the answer a save gets. */
+  profiles: ClusterProfilesData = { profiles: [] }
+  profileSaves: { id: string; text: string | null }[] = []
+  profileAnswer: string | null = null
+  overlaySaves: { id: string; text: string }[] = []
+  async saveClusterOverlay(id: string, text: string): Promise<string | null> {
+    this.overlaySaves.push({ id, text })
+    this.profiles = { ...this.profiles,
+      overlays: [...(this.profiles.overlays ?? []).filter((o) => o.id !== id), { id, text }] }
+    return null
+  }
+
+  async clusterProfiles() {
+    return this.profiles
+  }
+
+  async saveClusterProfile(id: string, text: string | null) {
+    this.profileSaves.push({ id, text })
+    return this.profileAnswer
   }
 
   async save(changes: Record<string, string>): Promise<SaveOutcome> {

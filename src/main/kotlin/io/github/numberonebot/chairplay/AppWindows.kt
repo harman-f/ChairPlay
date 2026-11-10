@@ -13,7 +13,9 @@ import io.github.numberonebot.chairplay.config.fittedTo
 import io.github.numberonebot.chairplay.media.VideoWindow
 import java.nio.file.Path
 
-private val CONTROLS_SIZE = WindowSize(207, 412)
+private val CONTROLS_SIZE = WindowSize(207, 464)
+private val SETTINGS_SIZE = WindowSize(960, 680)
+private val SETTINGS_MIN_SIZE = WindowSize(640, 400)
 
 /**
  * The app's three windows, each opening where it was left (window.properties) and saving its place as it closes:
@@ -26,6 +28,20 @@ internal class AppWindows(dir: Path, config: DesktopConfig, mainTitle: String) {
     val controlsShown = ControlsWindowStore(dir)
     val controls: VideoWindow
     val altscreen: VideoWindow
+
+    /**
+     * The settings in a window of their own (window.settings.separate), null where they show over CarPlay: it opens
+     * where it was left, at its size, and its close button hides it until the car's button or the controls bring it.
+     */
+    val settings: VideoWindow? = if (!config.windowOnTop.separateSettings) null else {
+        val placements = WindowPlacementStore(dir, prefix = "settings.")
+        VideoWindow(SETTINGS_SIZE.width, SETTINGS_SIZE.height, placements.load(SETTINGS_SIZE), "ChairPlay settings",
+            hideOnClose = true, minSize = SETTINGS_MIN_SIZE).also {
+            it.onPlacement = { placement ->
+                runCatching { placements.save(placement, SETTINGS_SIZE) }.onFailure { error -> log("settings window place not saved: $error") }
+            }
+        }
+    }
 
     init {
         val placements = WindowPlacementStore(dir)

@@ -139,6 +139,8 @@ class SaveResult(val errors: Map<String, String>, val applies: Map<String, Strin
 
 /** What the HTTP server asks of the app; the JSON messages are maps and lists for [Json]. */
 interface UiApi {
+    /** Local-only experimental lab (never connected unless explicitly armed). */
+    fun liveLab(body: Map<*, *>): Map<String, Any?> = mapOf("state" to "NOT_SUPPORTED")
     /** Moves on with every change of what [state] returns. */
     val version: Long
     fun state(): Map<String, Any?>
@@ -215,9 +217,22 @@ interface UiApi {
 
     /** Saves the CarPlay screens as F12 does, to look at where the iPhone puts the car; false without them. */
     fun screenshot(): Boolean = false
+    /** The Controller's separate screenshots; F12 and the old API still request both. */
+    fun screenshotTarget(target: String): Boolean = false
 
     /** The GPS page's Drive mode switch, as F10 turns it; false while the GPS is off, which keeps it off. */
     fun driveMode(on: Boolean): Boolean = false
+
+    /** The GPS page's route (gps.route): "load" a GPX file's [gpx] text as [name], or "play", "pause" or "restart" it. */
+    fun gpsRoute(action: String, name: String?, gpx: String?): RouteAnswer = RouteAnswer(error = "No GPS car")
+
+    /** The AltScreen page's car profiles: each one's id, JSON text and whether the app carries it, and the one in force. */
+    fun clusterProfiles(): Map<String, Any?> = mapOf("profiles" to emptyList<Any>())
+
+    /** Keeps [text] as car profile [id], or deletes it while [text] is null; why not, else null. */
+    fun saveClusterProfile(id: String, text: String?): String? = "No car profiles here"
+    /** A JSON drawing in overlays/<id>.json, referenced by a vehicle View. */
+    fun saveClusterOverlay(id: String, text: String): String? = "No car overlays here"
 
     /**
      * The Keyboard page's bindings: each action's keys, defaults and fixed keys, and the wheel and repeat settings as

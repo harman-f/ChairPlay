@@ -1,6 +1,7 @@
 package io.github.numberonebot.chairplay
 
 import com.shilapi.xcertplay.airplay.AirPlaySession
+import io.github.numberonebot.chairplay.livelab.LiveLabController
 import io.github.numberonebot.chairplay.config.DesktopConfig
 import io.github.numberonebot.chairplay.config.AreaGroup
 import io.github.numberonebot.chairplay.config.areaKey
@@ -22,6 +23,9 @@ import io.github.numberonebot.chairplay.media.runWindows
 import io.github.numberonebot.chairplay.drive.Driving
 import io.github.numberonebot.chairplay.drive.AlmanacCache
 import io.github.numberonebot.chairplay.media.saveScreenshot
+import io.github.numberonebot.chairplay.media.ScreenshotSequence
+import io.github.numberonebot.chairplay.media.saveCapturedScreenshot
+import io.github.numberonebot.chairplay.media.ScreenshotRecord
 import io.github.numberonebot.chairplay.session.WirelessBootstrap
 import io.github.numberonebot.chairplay.ui.BuildInfo
 import io.github.numberonebot.chairplay.ui.ChairPlayUi
@@ -93,11 +97,44 @@ private fun runCarPlay(windowsOpen: () -> Unit) {
     // One thread keeps the press, moves and release in order.
     val touchSender = Executors.newSingleThreadExecutor { Thread(it, "touch-sender").apply { isDaemon = true } }
     val altView = AltscreenView(dir, config, altscreen, touchSender, active::get) { controlsChanged.get()() }
-    // F12 saves both screens, each at the size the iPhone draws it.
-    fun screenshots() {
-        window.screenshot { image -> saveScreenshot(image, dir, ::log) }
-        if (altView.on) altscreen.screenshot { image -> saveScreenshot(image, dir, ::log, "altscreen") }
+    val liveLab = LiveLabController(active::get, touchSender, ::log)
+    val screenshotSequence = ScreenshotSequence(dir)
+    /** F12 still captures both; the two Controller buttons select only one display. */
+    fun screenshotTarget(target: String): Boolean {
+        if (target !in setOf("both", "main", "altscreen")) return false
+        val captureMain = target != "altscreen" && window.visible
+        val captureAlt = target != "main" && altView.on && altscreen.visible
+        if (!captureMain && !captureAlt) return false
+        val number = runCatching { screenshotSequence.next() }.getOrElse {
+            log("screenshot sequence unavailable: $it")
+            return false
+        }
+        // Snapshot the FULL current profile and the nonsecret display settings before any
+        // asynchronous framebuffer read; metadata must describe the requested capture, not a later View.
+        val record = runCatching {
+            ScreenshotRecord.create(
+                dir, number, altView.carViews.profile?.id, altView.carViews.current,
+                altView.content?.key ?: "none", active.get() != null,
+            )
+        }.getOrElse {
+            log("screenshot metadata failed: $it")
+            return false
+        }
+        val screens = listOfNotNull("main".takeIf { captureMain }, "altscreen".takeIf { captureAlt })
+        if (!runCatching { record.saveMetadata(screens) }.onFailure {
+            log("screenshot metadata cannot be saved: $it")
+        }.isSuccess) return false
+        if (captureMain) {
+            val destination = record.file("main")
+            window.screenshot { image -> saveCapturedScreenshot(image, destination, ::log) }
+        }
+        if (captureAlt) {
+            val destination = record.file("altscreen")
+            altscreen.screenshotWithOverlays { image -> saveCapturedScreenshot(image, destination, ::log) }
+        }
+        return true
     }
+    fun screenshots() { screenshotTarget("both") }
     val tracker = TouchTracker()
     val pending = TouchQueue()
     // Every sample goes through the tracker so it never misses a button change; only the send needs a session.
@@ -112,7 +149,7 @@ private fun runCarPlay(windowsOpen: () -> Unit) {
     // The spoofed GPS's car (gps.*): driven on the window loop by a gamepad, or by the arrows in drive mode (F10); each
     // connection with gps.enabled sends it to the iPhone.
     val almanac = AlmanacCache(dir.resolve("gps-almanac.yuma"), ::log)
-    val driving = Driving(config.gps, ::log, satelliteSentences = almanac::sentences)
+    val driving = Driving(config.gps, ::log, satelliteSentences = almanac::sentences, routeText = { java.nio.file.Files.readString(dir.resolve(it)) })
     // Ctrl+R: set once the bootstrap exists; closing a session talks to the network, so not on the GL thread.
     val restartBootstrap = AtomicReference<() -> Unit> {}
     // Reconnect retires the session unheard: set below, this ends it on the screens as a lost one would, CarPlay giving
@@ -171,8 +208,8 @@ private fun runCarPlay(windowsOpen: () -> Unit) {
             // A saved turn card moves at once, as Shift+F11 moves it.
             saved["altscreen.cards"]?.let(altView::cardsSaved)
         },
-        demo = altView.demos, gps = driving::state, driving = uiDriving(driving, window, ::screenshots, ::log),
-        bufferedAudio = audio::bufferedAudio)
+        demo = altView.demos, gps = driving::state, driving = uiDriving(driving, window, ::screenshots, ::log, dir, ::screenshotTarget),
+        bufferedAudio = audio::bufferedAudio, profiles = uiProfiles(dir, config, altView, ::log), separateSettings = windows.settings != null, liveLab = liveLab)
     altView.onWindowsChanged = { ui.windowsChanged() }
     // The CarPlay page offers Actual size while the window's size differs from the picture's.
     window.onResize = { ui.windowsChanged() }
@@ -295,6 +332,6 @@ private fun runCarPlay(windowsOpen: () -> Unit) {
         }
     }, "instance-lock").apply { isDaemon = true }.start()
     // GLFW needs its windows and event loop on this, the main, thread; the bring-up runs on its own.
-    runWindows(window, *listOfNotNull(altscreen, controlsWindow).toTypedArray(), pass = windowPass(driving, appControls), opened = { windowsOpen(); appControls.global.pass() })
+    runWindows(window, *listOfNotNull(altscreen, controlsWindow, windows.settings?.let { settingsWindow(it, ui, window) }).toTypedArray(), pass = windowPass(driving, appControls), opened = { windowsOpen(); appControls.global.pass() })
     exitProcess(0)
 }

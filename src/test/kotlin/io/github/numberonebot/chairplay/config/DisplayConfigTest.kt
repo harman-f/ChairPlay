@@ -24,6 +24,20 @@ class DisplayConfigTest {
         assertEquals(WindowSize(1280, 720), config.window)
     }
 
+    @Test
+    fun `main zoom factor and physical zoom reach the real info descriptor`() {
+        val main = configWith("display.zoom.factor=125", "display.physical.zoom=125").airPlay
+        assertEquals(125, main.main.zoomFactor)
+        assertEquals(160 to 90, main.main.widthPhysicalMm to main.main.heightPhysicalMm)
+        val displays = AirPlayInfoPlist.build(main)["displays"] as List<*>
+        val entry = displays[0] as Map<*, *>
+        assertEquals(125, entry["zoomFactor"])
+        assertEquals(160, entry["widthPhysical"])
+        assertEquals(90, entry["heightPhysical"])
+        val auto = AirPlayInfoPlist.build(configWith().airPlay)["displays"] as List<*>
+        assertFalse("zoomFactor" in (auto[0] as Map<*, *>))
+    }
+
     // iOS picks its 2x or 3x rendering from pixels against millimetres, so ppi is the convenient knob.
     @Test
     fun `a ppi sets the physical size the iPhone sees`() {

@@ -14,7 +14,7 @@ const DOT = { ok: 'ok', busy: 'busy', warn: 'warn', idle: '' } as const
  * where the connection stands, and Connect, or Reconnect and Disconnect once connecting has begun. In a narrow window
  * the window buttons show their icons alone, and the status gives way before the buttons do.
  */
-export function Toolbar({ state, backend, guide }: { state: AppState; backend: Backend; guide?: Steps | null }) {
+export function Toolbar({ state, backend, guide, standalone = false }: { state: AppState; backend: Backend; guide?: Steps | null; standalone?: boolean }) {
   const session = state.canShowCarPlay
   const restart = sectionsOf(state.restartPending).map((id) => SECTIONS.find((section) => section.id === id)!.title)
   const idle = state.phase === 'setup' || state.phase === 'idle'
@@ -29,23 +29,26 @@ export function Toolbar({ state, backend, guide }: { state: AppState; backend: B
   const connectWaits = networkWaits(state) ?? (guide ? guide.connectWaits : state.phase === 'setup' ? 'Enter the iPhone Wi-Fi network first' : null)
   return (
     <header className="tb">
-      <button
-        type="button"
-        className="btn"
-        aria-label="CarPlay"
-        disabled={!session || !state.embedded}
-        title={
-          !session
-            ? 'Connect the iPhone first'
-            : state.embedded
-              ? 'Show CarPlay (Esc)'
-              : "CarPlay shows in ChairPlay's window"
-        }
-        onClick={() => backend.show('carplay')}
-      >
-        <CarPlayIcon />
-        <span className="label">CarPlay</span>
-      </button>
+      {/* In a window of their own the settings never cover CarPlay, which always shows in its window. */}
+      {!standalone && (
+        <button
+          type="button"
+          className="btn"
+          aria-label="CarPlay"
+          disabled={!session || !state.embedded}
+          title={
+            !session
+              ? 'Connect the iPhone first'
+              : state.embedded
+                ? 'Show CarPlay (Esc)'
+                : "CarPlay shows in ChairPlay's window"
+          }
+          onClick={() => backend.show('carplay')}
+        >
+          <CarPlayIcon />
+          <span className="label">CarPlay</span>
+        </button>
+      )}
       <WindowButton state={state} backend={backend} name="altscreen" label="AltScreen" icon={<AltScreenIcon />} />
       <WindowButton state={state} backend={backend} name="controls" label="Controls" icon={<ControlsIcon />} />
       <span className="grow" />

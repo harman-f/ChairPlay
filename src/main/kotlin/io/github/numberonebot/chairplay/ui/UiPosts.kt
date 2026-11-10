@@ -100,6 +100,10 @@ internal fun postRoute(api: UiApi, route: String, body: Map<*, *>): Pair<Int, Ma
         "demo" ->
             if (api.demo(body["kind"] as? String)) json(200, mapOf("ok" to true))
             else json(409, mapOf("error" to "No such demo, or the AltScreen is off"))
+        "live-lab" -> {
+            val result = api.liveLab(body)
+            json(if (result["state"] == "REJECTED") 409 else 200, result)
+        }
         "volume" -> {
             val level = (body["level"] as? Number)?.toInt()
             when {
@@ -118,6 +122,32 @@ internal fun postRoute(api: UiApi, route: String, body: Map<*, *>): Pair<Int, Ma
                 else -> json(409, mapOf("error" to "no GPS car"))
             }
         }
+        "cluster-overlay" -> {
+            val id = body["id"] as? String
+            val text = body["text"] as? String
+            val error = if (id == null || text == null) "Overlay id and text required"
+                else api.saveClusterOverlay(id, text)
+            if (error != null) json(409, mapOf("error" to error))
+            else json(200, mapOf("ok" to true))
+        }
+        "cluster-profile" -> {
+            val id = body["id"] as? String
+            val error = id?.let { api.saveClusterProfile(it, if (body["delete"] == true) null else body["text"] as? String ?: "") }
+            when {
+                id == null -> json(400, mapOf("error" to "id missing"))
+                error != null -> json(409, mapOf("error" to error))
+                else -> json(200, mapOf("ok" to true))
+            }
+        }
+        "gps-route" -> {
+            val action = body["action"] as? String
+            val answer = action?.let { api.gpsRoute(it, body["name"] as? String, body["gpx"] as? String) }
+            when {
+                answer == null -> json(400, mapOf("error" to "action missing"))
+                answer.error != null -> json(409, mapOf("error" to answer.error))
+                else -> json(200, mapOf("ok" to true, "path" to answer.path))
+            }
+        }
         "drive-mode" -> {
             val on = body["on"] as? Boolean
             when {
@@ -126,8 +156,16 @@ internal fun postRoute(api: UiApi, route: String, body: Map<*, *>): Pair<Int, Ma
                 else -> json(409, mapOf("error" to "the GPS is off"))
             }
         }
-        "screenshot" ->
-            if (api.screenshot()) json(200, mapOf("ok" to true)) else json(409, mapOf("error" to "no screens"))
+        "screenshot" -> {
+            val target = body["target"] as? String
+            when {
+                target != null && target !in setOf("main", "altscreen", "both") ->
+                    json(400, mapOf("error" to "screenshot target must be main, altscreen or both"))
+                (if (target == null) api.screenshot() else api.screenshotTarget(target)) ->
+                    json(200, mapOf("ok" to true))
+                else -> json(409, mapOf("error" to "the requested screen is not visible"))
+            }
+        }
         "firewall-rule" ->
             if (api.addFirewallRule()) json(200, mapOf("ok" to true))
             else json(409, mapOf("error" to "The rule was not added"))

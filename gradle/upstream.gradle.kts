@@ -1,5 +1,5 @@
-// The portable CarPlay core is compiled from the Android library's own sources in the DiPlay submodule
-// (upstream/), so DiPlay's changes come in by moving the submodule. A Sync copy applies the file filter to
+// The portable CarPlay core is compiled from the tracked DiPlay shared sources in upstream/.
+// P6 protocol modifications are native fork sources, not uncommitted submodule edits. A Sync copy applies the file filter to
 // upstream alone: filtering the source set would also hide desktop replacements that share an upstream path.
 // build.gradle.kts adds both copies to the source sets.
 val upstreamCore by tasks.registering(Sync::class) {
@@ -90,6 +90,7 @@ val upstreamCore by tasks.registering(Sync::class) {
             "        if (config.icons.isNotEmpty()) {" to
                 "        io.github.numberonebot.chairplay.input.HandwritingHid.advertise(info,\n" +
                 "            experimental = config.keyboardInput, keyboard = config.keyboardInput)\n" +
+                "        io.github.numberonebot.chairplay.config.ClusterProfile.advertise(info)\n" +
                 "        if (config.icons.isNotEmpty()) {",
         ),
         "com/shilapi/xcertplay/airplay/AirPlaySession.kt" to listOf(

@@ -5,6 +5,7 @@ import { Group, Row, Segmented, Switch, type Choice } from '../shell/controls'
 import type { Settings } from '../shell/useSettings'
 import { Compass, HeadingField, PositionFields } from './gpsFields'
 import { Changed, parts, pendingOf } from './parts'
+import { RouteGroup } from './RouteGroup'
 import { WindowsLocationButton } from './WindowsLocationButton'
 
 /** What the iPhone learns as it connects: whether there is a GPS, and what it sends besides the position. */
@@ -28,6 +29,7 @@ const HANDLING: readonly Choice[] = [
 const GAUGES: readonly Choice[] = [
   ['large', 'Large'],
   ['small', 'Small'],
+  ['hidden', 'Speed only'],
 ]
 
 /** gps.wheel: what the gauges' steering wheel shows. */
@@ -143,6 +145,14 @@ export function GpsPage({ state, backend, settings }: { state: AppState; backend
             <Compass heading={Number(heading) || 0} />
           </Row>
         )}
+        <RouteGroup
+          backend={backend}
+          settings={settings}
+          car={state.gps}
+          routeKey={state.controls?.keys.route}
+          off={off}
+          speedField={field('gps.route.speed', 'Route speed', '50')}
+        />
         <Group title="Virtual car" note={now?.going} />
         <Row
           title={`Drive the car with the arrows instead of the knob, and show its speedometer and tachometer on the AltScreen${driveKey ? ` (${keyLabel(driveKey)})` : ''}`}
@@ -171,7 +181,7 @@ export function GpsPage({ state, backend, settings }: { state: AppState; backend
         </Row>
         <Row
           label="Gauges"
-          title={`The speedometer and tachometer in drive mode: as tall as the AltScreen, or small in its lower corners${gaugesKey ? ` (${keyLabel(gaugesKey)})` : ''}`}
+          title={`The speedometer and tachometer in drive mode: as tall as the AltScreen, small in its lower corners, or none, with the speed alone at the bottom${gaugesKey ? ` (${keyLabel(gaugesKey)})` : ''}`}
         >
           <Segmented
             label="Gauges"

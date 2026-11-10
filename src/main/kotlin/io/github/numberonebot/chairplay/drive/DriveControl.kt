@@ -151,7 +151,7 @@ class DriveControl(
         gamepad = axes != null
         val input = combined(combined(if (keyboard) keys.input() else CarInput(), axes?.let(::gamepadInput) ?: CarInput()), scripted)
         drive.input = input
-        val active = keyboard || input != CarInput() || drive.moving
+        val active = keyboard || input != CarInput() || drive.moving || drive.following
         if (active) drive.advance()
         val moving = drive.moving
         if (wasMoving && !moving) onStopped(drive.snapshot())

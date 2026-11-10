@@ -7,7 +7,7 @@ import io.github.numberonebot.chairplay.drive.gaugeWells
  * settings as saved ([values]), none while the AltScreen is off.
  */
 internal fun altscreenWellsState(values: Map<String, String>): List<Map<String, Float>> {
-    if (values["altscreen.enabled"]?.trim() != "true") return emptyList()
+    if (values["altscreen.enabled"]?.trim() != "true" || values["gps.gauges"]?.trim() == "hidden") return emptyList()
     val (width, height) = altscreenFrameSize(values)
     val small = values["gps.gauges"]?.trim() == "small"
     return gaugeWells(width, height, small).map { mapOf("x" to it.x, "y" to it.y, "radius" to it.radius) }

@@ -3,6 +3,7 @@ package io.github.numberonebot.chairplay.session
 import com.shilapi.xcertplay.airplay.AirPlaySession
 import com.shilapi.xcertplay.airplay.AirPlaySessionListener
 import com.shilapi.xcertplay.airplay.MediaSink
+import io.github.numberonebot.chairplay.config.ClusterProfile
 import io.github.numberonebot.chairplay.config.DesktopConfig
 import io.github.numberonebot.chairplay.data.CarPlayDataTap
 import io.github.numberonebot.chairplay.data.DataLink
@@ -159,6 +160,7 @@ class WirelessBootstrap internal constructor(
             val radio = parts.radioAddress()
             val now = config.now()
             val sessionConfig = config.airPlayNow(now).copy(btMac = radio)
+            ClusterProfile.active = now.clusterProfile
             if (!stack.closed) onConnection(now)
             val sessions = BringUpSessions(stack, listener, ducks, { current === stack }, { restart(stack) }, ::log)
             network.validateReady()

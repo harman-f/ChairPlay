@@ -90,6 +90,10 @@ internal class AppControls(
             gaugeSize()
             return
         }
+        if (control == Control.RoutePlay) {
+            driving.route("toggle")?.let { log("route key (F5): $it") }
+            return
+        }
         if (control == Control.Screenshot) {
             screenshots()
             return
@@ -116,6 +120,11 @@ internal class AppControls(
             reconnect()
             return
         }
+        // The cluster's schematic follows View without a session too; the iPhone, with one, moves its picture.
+        if (control == Control.CarView) {
+            touchSender.execute { altView.step(control, active()) }
+            return
+        }
         val session = expectedSession ?: return
         touchSender.execute {
             if (active() !== session) return@execute
@@ -130,7 +139,8 @@ internal class AppControls(
                 }
                 Control.NextAltscreenContent, Control.NextAltscreenCards, is Control.ShowAltscreenContent ->
                     altView.step(control, session)
-                Control.Fullscreen, Control.Screenshot, Control.Reconnect, is Control.VolumeStep, Control.MuteToggle, Control.DriveMode, Control.GaugeSize -> Unit
+                Control.Fullscreen, Control.Screenshot, Control.Reconnect, is Control.VolumeStep, Control.MuteToggle, Control.DriveMode, Control.GaugeSize,
+                Control.CarView, Control.RoutePlay -> Unit
             }
         }
     }
@@ -197,6 +207,7 @@ internal class AppControls(
             "keys" to ControlAction.entries.associate { it.key.removePrefix("key.") to bindings.get().firstKey(it) },
             "volume" to mapOf("level" to volume.level, "muted" to volume.muted),
             "altscreen" to altView.content?.key,
+            "carView" to altView.carViews.current,
             "altHeld" to altHeld.get(),
             "playing" to playing(),
             "globalKeyboard" to global.state(),

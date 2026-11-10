@@ -29,6 +29,15 @@ internal class DisplaySettings(settings: Properties) {
         require(it in 30..60) { "display.fps must be between 30 and 60, not $it" }
     }
 
+    /** Smart Display zoom is an optional numeric key on the MAIN display, not just the cluster. */
+    private val zoomFactor = settings.positiveSetting("display.zoom.factor")?.also {
+        require(it in 25..400) { "display.zoom.factor must be between 25 and 400" }
+    }
+    /** A scaling ratio applied to physical mm; 100 preserves the 200 mm default width. */
+    private val physicalZoom = (settings.positiveSetting("display.physical.zoom") ?: 100).also {
+        require(it in 25..400) { "display.physical.zoom must be between 25 and 400" }
+    }
+
     /**
      * The physical size in /info, from which iOS picks its scale: millimetres as given, else from
      * display.ppi, else upstream's 200 mm width. A missing height follows the aspect ratio, as /info would.
@@ -41,7 +50,10 @@ internal class DisplaySettings(settings: Properties) {
         val heightMm = settings.positiveSetting("display.physical.height.mm")
             ?: (if (setWidthMm == null) fromPpi(height) else null)
             ?: Math.round(widthMm * height.toDouble() / width).toInt()
-        widthMm to heightMm
+        Pair(
+            Math.round(widthMm * 100.0 / physicalZoom).toInt().coerceAtLeast(1),
+            Math.round(heightMm * 100.0 / physicalZoom).toInt().coerceAtLeast(1),
+        )
     }
 
     /** The CarPlay window on the PC; the picture is scaled into it, so it needs not match the display. */
@@ -119,5 +131,6 @@ internal class DisplaySettings(settings: Properties) {
         mainDisplayCornerMasks = squareCorners,
         // Upstream leaves the safe area out with square corners, to avoid a conflict with them; a set one stays.
         mainDisplayDisableSafeArea = squareCorners == true && safeArea == null,
+        zoomFactor = zoomFactor,
     )
 }

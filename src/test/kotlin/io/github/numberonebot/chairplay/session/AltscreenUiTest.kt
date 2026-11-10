@@ -54,6 +54,21 @@ class AltscreenUiTest {
         assertEquals(listOf("keep a", "stopUI", "showUI a", "keep a", "stopUI"), phone.commands)
     }
 
+    // A live navigation option edits the cluster URL without reconnecting the underlying video session.
+    @Test
+    fun `a changed cluster URL is delivered during the same stream`() {
+        ui.tell(phone, "maps:/car/instrumentcluster/map", seen = true)
+        ui.tell(phone, "maps:/car/instrumentcluster/map?showCompass=yes", seen = true)
+
+        assertEquals(
+            listOf(
+                "showUI maps:/car/instrumentcluster/map",
+                "showUI maps:/car/instrumentcluster/map?showCompass=yes",
+            ),
+            phone.commands,
+        )
+    }
+
     // Each new AltScreen stream starts with the iPhone drawing its initial view, so a stop is sent anew; another
     // phone is told too.
     @Test

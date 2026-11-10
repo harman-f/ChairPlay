@@ -89,19 +89,20 @@ class UiServer(
     }
 
     private fun api(exchange: HttpExchange, route: String) {
-        if (!authorized(exchange)) {
+        if (route !in setOf("live-lab", "screenshot") && !authorized(exchange)) {
             json(exchange, 401, mapOf("error" to "missing or wrong token"))
             return
         }
         val method = exchange.requestMethod
-        val posts = setOf("settings", "controls", "connect", "reconnect", "disconnect", "screen", "window", "control", "key", "keyboard-focus", "altscreen", "open", "window-size", "firewall-rule", "forget", "altscreen-frame", "demo", "volume", "windows-location", "gps-drive", "screenshot", "drive-mode")
-        val gets = setOf("state", "settings", "passphrase", "controls", "folder-sizes", "events")
+        val posts = setOf("settings", "controls", "connect", "reconnect", "disconnect", "screen", "window", "control", "key", "keyboard-focus", "altscreen", "open", "window-size", "firewall-rule", "forget", "altscreen-frame", "demo", "volume", "windows-location", "gps-drive", "screenshot", "drive-mode", "gps-route", "cluster-profile", "live-lab")
+        val gets = setOf("state", "settings", "passphrase", "controls", "folder-sizes", "events", "cluster-profiles")
         when {
             method == "GET" && route in gets -> when (route) {
                 "state" -> json(exchange, 200, api.state())
                 "settings" -> json(exchange, 200, api.settings())
                 "passphrase" -> json(exchange, 200, mapOf("passphrase" to api.savedPassphrase()))
                 "folder-sizes" -> json(exchange, 200, api.folderSizes())
+                "cluster-profiles" -> json(exchange, 200, api.clusterProfiles())
                 "controls" -> api.controls()?.let { json(exchange, 200, it) } ?: json(exchange, 404, mapOf("error" to "no key bindings"))
                 else -> events(exchange)
             }
@@ -207,7 +208,8 @@ class UiServer(
 
     companion object {
         private const val INDEX = "index.html"
-        private const val MAX_BODY = 64 * 1024
+        // A GPX route recorded on a drive runs to a few megabytes.
+        private const val MAX_BODY = 8 * 1024 * 1024
         private const val KEEP_ALIVE_MILLIS = 15_000L
         private const val CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
             "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"

@@ -26,6 +26,8 @@ sealed interface Control {
     data object NextAltscreenContent : Control
     /** Asks the iPhone for the altscreen's next card layout, through the cluster URL. */
     data object NextAltscreenCards : Control
+    /** The car's View button: the AltScreen shows the car's next cluster view (altscreen.profile). */
+    data object CarView : Control
     /** Asks the iPhone for [content] on the altscreen, as the controls window's modes do. */
     data class ShowAltscreenContent(val content: AltscreenContent) : Control
     /** Turns the app's volume [steps] steps up, or down when negative; nothing goes to the iPhone. */
@@ -36,6 +38,8 @@ sealed interface Control {
     data object DriveMode : Control
     /** Switches the GPS car's gauges between large and small, saved as gps.gauges; nothing goes to the iPhone. */
     data object GaugeSize : Control
+    /** Plays or pauses the GPS car's GPX route (gps.route); nothing goes to the iPhone but where the car is. */
+    data object RoutePlay : Control
 }
 
 /**
@@ -159,8 +163,10 @@ internal fun pressControl(action: ControlAction): Control? = when (action) {
     ControlAction.RECONNECT -> Control.Reconnect
     ControlAction.ALTSCREEN_CONTENT -> Control.NextAltscreenContent
     ControlAction.ALTSCREEN_CARDS -> Control.NextAltscreenCards
+    ControlAction.ALTSCREEN_VIEW -> Control.CarView
     ControlAction.VOLUME_MUTE -> Control.MuteToggle
     ControlAction.DRIVE -> Control.DriveMode
     ControlAction.GAUGES -> Control.GaugeSize
+    ControlAction.ROUTE -> Control.RoutePlay
     else -> null
 }

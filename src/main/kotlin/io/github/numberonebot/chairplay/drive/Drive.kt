@@ -32,6 +32,12 @@ class Drive(
 
     val moving: Boolean get() = synchronized(lock) { car.state.speed != 0.0 }
 
+    /** A GPX route the car follows while it plays, in place of the pedals and the wheel (gps.route). */
+    @Volatile var route: RoutePlayer? = null
+
+    /** Whether the route moves the car: playing, or rolling to a stop on it. */
+    val following: Boolean get() = route?.moving == true
+
     /**
      * Moves the car on by the time since the last call, in steps of at most [STEP_SECONDS]. A longer pause (the window
      * dragged, the app stalled) counts as [MAX_GAP_SECONDS], so the car never jumps down the road.
@@ -44,8 +50,17 @@ class Drive(
             var left = ((now - last) / 1e9).coerceIn(0.0, MAX_GAP_SECONDS)
             while (left > 1e-9) {
                 val dt = min(left, STEP_SECONDS)
-                val state = car.step(input, dt)
-                position = position.moved(state.headingDegrees, car.lastMeters)
+                val play = route?.takeIf { it.moving }
+                if (play != null) {
+                    // On the road: its place and way, at the player's speed, in drive.
+                    val place = play.step(dt)
+                    position = place.position
+                    car = CarModel(spec, car.state.copy(speed = play.speed, headingDegrees = place.headingDegrees,
+                        parked = false, gear = 1 + (play.speed / GEAR_STEP).toInt().coerceAtMost(5), rpm = ROUTE_RPM))
+                } else {
+                    val state = car.step(input, dt)
+                    position = position.moved(state.headingDegrees, car.lastMeters)
+                }
                 left -= dt
             }
         }
@@ -95,5 +110,8 @@ class Drive(
         private const val STEP_SECONDS = 1.0 / 60
         private const val MAX_GAP_SECONDS = 0.1
         private const val SAMPLE_NANOS = 100_000_000L
+        /** On a route the gearbox goes up a gear every 8 m/s (about 30 km/h), and the engine turns at an even pace. */
+        private const val GEAR_STEP = 8.0
+        private const val ROUTE_RPM = 2000.0
     }
 }

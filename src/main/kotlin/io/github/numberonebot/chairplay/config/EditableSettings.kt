@@ -57,6 +57,14 @@ object EditableSettings {
         "display.physical.width.mm" to Setting(Applies.RECONNECT, check = ::checkOptionalPositive),
         "display.physical.height.mm" to Setting(Applies.RECONNECT, check = ::checkOptionalPositive),
         "display.ppi" to Setting(Applies.RECONNECT, check = ::checkOptionalPositive),
+        "display.zoom.factor" to Setting(Applies.RECONNECT) { value ->
+            if (value.isBlank() || value.toIntOrNull()?.let { it in 25..400 } == true) null
+            else "Choose Auto or a zoom percentage from 25 to 400"
+        },
+        "display.physical.zoom" to Setting(Applies.RECONNECT) { value ->
+            if (value.toIntOrNull()?.let { it in 25..400 } == true) null
+            else "Physical zoom must be from 25 to 400 percent"
+        },
         // CarPlay turns dark or light while it runs, as a car's headlights tell it to.
         "display.theme" to choice("windows", "light", "dark", "phone", applies = Applies.NOW),
         "display.dock" to choice("auto", "driver", "bottom", applies = Applies.RECONNECT),
@@ -71,9 +79,11 @@ object EditableSettings {
         "window.width" to Setting(Applies.RESTART) { checkOptionalSize(it, MAIN_WINDOW_MIN_SIZE.width) },
         "window.height" to Setting(Applies.RESTART) { checkOptionalSize(it, MAIN_WINDOW_MIN_SIZE.height) },
         "window.always.on.top" to switch(Applies.NOW),
+        "window.settings.separate" to switch(Applies.RESTART),
         "altscreen.always.on.top" to switch(Applies.NOW),
         // The iPhone learns of the AltScreen as it connects; the turn card moves while it runs, as Shift+F11 moves it.
         "altscreen.enabled" to switch(Applies.RECONNECT),
+        "altscreen.profile" to Setting(Applies.RECONNECT) { null },
         "altscreen.width" to Setting(Applies.RECONNECT, check = ::checkPositiveEven),
         "altscreen.height" to Setting(Applies.RECONNECT, check = ::checkPositiveEven),
         "altscreen.content" to choice("map", "map-card", "hud", "card", applies = Applies.RECONNECT),
@@ -116,9 +126,11 @@ object EditableSettings {
         "gps.car.power.hp" to Setting(Applies.NOW) { checkNumber(it, GpsSettings.POWER_HP, "a power", "hp") },
         "gps.car.mass.kg" to Setting(Applies.NOW) { checkNumber(it, GpsSettings.MASS_KG, "a mass", "kg") },
         "gps.car.handling" to choice("gentle", "normal", "sharp", applies = Applies.NOW),
-        "gps.gauges" to choice("large", "small", applies = Applies.NOW),
+        "gps.gauges" to choice("large", "small", "hidden", applies = Applies.NOW),
         "gps.wheel" to choice("heading", "steering", applies = Applies.NOW),
         "gps.units" to choice("metric", "imperial", applies = Applies.NOW),
+        "gps.route" to Setting(Applies.NOW) { null },
+        "gps.route.speed" to Setting(Applies.NOW) { checkNumber(it, GpsSettings.ROUTE_KMH, "a speed", "km/h") },
         // The next fix goes so.
         "gps.rate" to choice(*GpsSettings.RATES.map { it.toString() }.toTypedArray(), applies = Applies.NOW),
         "gps.nmea" to choice("classic", "modern", applies = Applies.NOW),

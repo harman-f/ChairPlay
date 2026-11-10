@@ -98,6 +98,10 @@ internal val SETTINGS_TEMPLATE = listOf(
         "display.physical.width.mm" to "", "display.physical.height.mm" to "", "display.ppi" to "",
     ),
     SettingBlock(
+        "The main-screen iOS zoomFactor (blank means Auto), and separate physical-mm zoom percent. Reconnect to apply.",
+        "display.zoom.factor" to "", "display.physical.zoom" to "100",
+    ),
+    SettingBlock(
         "The window on this PC; the picture is scaled into it. Blank uses the display size.\n" +
             "The app then remembers where you leave the window and its size, until these change.",
         "window.width" to "", "window.height" to "",
@@ -105,6 +109,11 @@ internal val SETTINGS_TEMPLATE = listOf(
     SettingBlock(
         "Keep each window above other windows. Changes apply immediately.",
         "window.always.on.top" to "false", "altscreen.always.on.top" to "false",
+    ),
+    SettingBlock(
+        "'true' opens the settings in a window of their own, CarPlay's window always showing CarPlay; 'false' shows\n" +
+            "them over CarPlay in its window. Applies at the next start.",
+        "window.settings.separate" to "false",
     ),
     SettingBlock(
         "'true' resizes the windows only with the picture's shape (a maximized one still fills the screen),\n" +
@@ -122,6 +131,11 @@ internal val SETTINGS_TEMPLATE = listOf(
             "numbers); what it starts with: 'map', 'map-card', 'hud' or 'card' (the turn card).",
         "altscreen.enabled" to "false", "altscreen.width" to "1440", "altscreen.height" to "540",
         "altscreen.content" to "map-card",
+    ),
+    SettingBlock(
+        "A car whose cluster the altscreen copies, as its head unit declares it to the iPhone: blank for none, or\n" +
+            "'mu1440-790'; it sets the size, and Shift+F11 steps through the car's views.",
+        "altscreen.profile" to "",
     ),
     SettingBlock(
         "Where the altscreen shows the navigation app's ETA and turn card on Map + card: 'auto' (the driver's\n" +
@@ -181,12 +195,17 @@ internal val SETTINGS_TEMPLATE = listOf(
     ),
     SettingBlock(
         "The car: its power in hp (20-2000) and its mass in kg (300-10000); how it turns, 'gentle', 'normal' or\n" +
-            "'sharp'; drive mode's gauges, 'large' or 'small' in the window's lower corners (Shift+F10); and what the\n" +
+            "'sharp'; drive mode's gauges, 'large', 'small' in the window's lower corners or 'hidden' (the speed alone at the bottom; Shift+F10); and what the\n" +
             "gauges' wheel shows, 'steering' (the car up, turning with the input like a real wheel, for a track-up\n" +
             "map like Google Maps) or 'heading' (north up, for a north-up map like Apple Maps). Speed units are\n" +
             "'metric' (km/h) or 'imperial' (mph), for the gauges and speed readouts only.",
         "gps.car.power.hp" to "300", "gps.car.mass.kg" to "1500", "gps.car.handling" to "normal", "gps.gauges" to "large",
         "gps.wheel" to "steering", "gps.units" to "metric",
+    ),
+    SettingBlock(
+        "A GPX route the car follows when played (F5 or the GPS page): its file in this folder, as the GPS page\n" +
+            "saves it in 'routes', blank for none; and how fast it goes between the corners in km/h (5-250).",
+        "gps.route" to "", "gps.route.speed" to "50",
     ),
     SettingBlock(
         "Experiments in what the iPhone takes from the GPS: fixes a second, '1', '4' (as the iPhone asks) or '10';\n" +

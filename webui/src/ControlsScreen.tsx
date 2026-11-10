@@ -188,6 +188,7 @@ export function ControlsScreen({ state, backend }: { state: AppState; backend: B
   }
   // Only an AltScreen on screen showing a map, Map or Map + card, has a map to zoom.
   const view = controls?.altscreen ?? null
+  const carView = controls?.carView ?? null
   const altOn =
     (view === 'map' || view === 'map-card') &&
     state.windows.altscreen.available &&
@@ -229,9 +230,31 @@ export function ControlsScreen({ state, backend }: { state: AppState; backend: B
           />
           <Key {...shared} action="volume.up" label="Volume up" icon={icons.volumeUp} />
         </div>
-        <div className="key-row two">
+        <div className="key-row three">
           <Key {...shared} action="call.answer" label="Answer" icon={icons.answer} text="Answer" className="answer" />
+          <Key
+            {...shared}
+            action="altscreen.view"
+            label="View"
+            icon={icons.view}
+            text={carView == null ? 'View' : `View ${carView}`}
+            disabled={carView == null}
+            disabledTitle="Set a car's profile on the AltScreen to step through its views"
+          />
           <Key {...shared} action="call.end" label="End" icon={icons.end} text="End" className="end" />
+        </div>
+        <div className="key-row two">
+          <button type="button" className="key" aria-label="Screenshot main"
+            title="Capture main CarPlay display, numbered and tagged with active View"
+            onClick={() => void backend.screenshot('main')}>
+            {icons.screenshot}<span>Main shot</span>
+          </button>
+          <button type="button" className="key" aria-label="Screenshot AltScreen"
+            title="Capture complete AltScreen including Skoda overlays and active View"
+            disabled={!state.windows.altscreen.available || !state.windows.altscreen.visible}
+            onClick={() => void backend.screenshot('altscreen')}>
+            {icons.screenshot}<span>Alt shot</span>
+          </button>
         </div>
       </div>
     </div>

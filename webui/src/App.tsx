@@ -25,9 +25,10 @@ export function App() {
   if (!state) {
     return <p className="app-message">{lost ? 'The app is not answering.' : 'Loading…'}</p>
   }
+  // /settings is the settings window's (window.settings.separate), and a browser's: the page that never gives way to CarPlay.
   return (
     <>
-      <Shell state={state} backend={api} />
+      <Shell state={state} backend={api} standalone={window.location.pathname === '/settings'} />
       {lost && (
         <div className="lost" role="status">
           Lost contact with the app. Trying again…

@@ -127,6 +127,20 @@ export const icons = {
       <path d="M1.5 9.5C5 6 11 6 14.5 9.5l-1.8 2-2.4-1.2V8.6a8 8 0 0 0-4.6 0v1.7l-2.4 1.2z" fill="currentColor" />
     </Icon>
   ),
+  screenshot: (
+    <Icon>
+      <path d="M2 5h3l1-2h4l1 2h3v8H2z" {...line} />
+      <circle cx="8" cy="9" r="2.5" {...line} />
+    </Icon>
+  ),
+  /** The car's View button: a cluster with its two dials. */
+  view: (
+    <Icon>
+      <rect x="1" y="4" width="14" height="8" rx="2" {...line} />
+      <circle cx="5" cy="8" r="2" {...line} />
+      <circle cx="11" cy="8" r="2" {...line} />
+    </Icon>
+  ),
   zoomIn: (
     <Icon>
       <path d="M3 8h10M8 3v10" {...line} strokeWidth={1.8} />

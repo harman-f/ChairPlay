@@ -34,4 +34,6 @@ internal fun Properties.gpsSettings() = GpsSettings(
     gauges = choiceSetting("gps.gauges", GaugeSize.LARGE, GaugeSize.entries.associateBy { it.key }),
     wheel = choiceSetting("gps.wheel", WheelMode.STEERING, WheelMode.entries.associateBy { it.key }),
     units = choiceSetting("gps.units", SpeedUnits.METRIC, SpeedUnits.entries.associateBy { it.key }),
+    route = getProperty("gps.route")?.trim()?.ifEmpty { null },
+    routeSpeedKmh = decimalSetting("gps.route.speed", 50.0, GpsSettings.ROUTE_KMH),
 )
