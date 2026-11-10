@@ -31,6 +31,8 @@ The successful native Windows CI establishes that source, Kotlin tests, Gradle p
 - [ ] Verify Stream 111 / VC behavior and correlate with live iOS/device evidence.
 - [ ] Review local experimental Live-Lab/screenshot-route authentication before release.
 - [ ] Add real UI screenshots from the Windows test environment.
+- [x] Archive P7 opt-in per-area zoom research, test profile and CI reference without enabling it in the native runtime.
+- [x] Archive P8's uncompiled draft and its panel-POC dependencies without enabling them.
 - [ ] Separate experimental P8 `updateDisplayPanels` remove/re-add experiment **after** native baseline acceptance; it is **not** part of the consolidated P6 source.
 - [ ] Issue a separately approved preview/release only after relevant checks.
 
@@ -38,3 +40,7 @@ The successful native Windows CI establishes that source, Kotlin tests, Gradle p
 
 - [`chairplay-native-consolidate.yml`](../.github/workflows/chairplay-native-consolidate.yml) records the one-shot migration and successful test-before-commit process. Normal development should now use the native checked-in source and its regular Gradle build; do not rerun one-shot migration against an already consolidated `main` without deliberate review.
 - [`mib2-skoda-combined.yml`](../.github/workflows/mib2-skoda-combined.yml) is retained as a pinned research patchchain reproduction workflow, not a prerequisite for the native build.
+
+## Research migration
+
+The 16 ChairPlay-specific research branches were reviewed for application code, experiments, profiles, tests and workflow provenance. See the [Research migration audit](RESEARCH_MIGRATION_AUDIT.md). P7's earlier [Research CI](https://github.com/CaneTLOTW/M.I.B._Research/actions/runs/42426831167) passed, but iOS 27.2 static research left per-area zoom consumption **unknown**; P7 therefore remains a **deferred**, default-off experiment, not a source of runtime zoom guarantees. P8 is a separate later draft and is not built or enabled. Original private device logs, screenshots and third-party iOS binary/disassembly artifacts are intentionally not public-migrated.
