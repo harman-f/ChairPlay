@@ -1,0 +1,13 @@
+# Lokale ChairPlay-Checkout-/Build-Daten und private Sitzungen
+local/
+worktrees/
+build/
+dist/
+.gradle/
+logs/
+screenshots/
+*.log
+identity.properties
+offline-mfi/
+pairings/
+settings.properties

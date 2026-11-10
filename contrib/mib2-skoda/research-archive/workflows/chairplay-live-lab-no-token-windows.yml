@@ -1,0 +1,179 @@
+name: ChairPlay Live Lab no-token experimental Windows JAR
+
+on:
+  push:
+    branches: [work/chairplay-live-lab-no-token-20261107]
+    paths:
+      - 'projects/chairplay-skoda-vc-eval/**'
+      - '.github/workflows/chairplay-live-lab-no-token-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chairplay-live-lab-no-token-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lab-jar-patch:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - name: Check out research branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            projects/chairplay-skoda-vc-eval
+            .github/workflows/chairplay-live-lab-no-token-windows.yml
+          sparse-checkout-cone-mode: false
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Clone exact pinned ChairPlay source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $revision = (Get-Content 'projects/chairplay-skoda-vc-eval/UPSTREAM_REVISION.txt' -Raw).Trim()
+          git clone --recurse-submodules --branch feature/skoda_790 https://github.com/zakklmv/ChairPlay.git "$env:RUNNER_TEMP\ChairPlay"
+          if ($LASTEXITCODE -ne 0) { throw 'Clone failed' }
+          git -C "$env:RUNNER_TEMP\ChairPlay" checkout --detach $revision
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned revision checkout failed' }
+          git -C "$env:RUNNER_TEMP\ChairPlay" submodule update --init --recursive
+          if ($LASTEXITCODE -ne 0) { throw 'Submodule fetch failed' }
+
+      - name: Apply tested live navigation controls fix
+        shell: pwsh
+        run: |
+          & 'projects/chairplay-skoda-vc-eval/scripts/apply-live-profile-patch.ps1' "$env:RUNNER_TEMP\ChairPlay"
+
+      - name: Apply Manual Setup and Scaling patch
+        shell: pwsh
+        run: |
+          & 'projects/chairplay-skoda-vc-eval/scripts/apply-manual-scaling-patch.ps1' "$env:RUNNER_TEMP\ChairPlay" 'projects/chairplay-skoda-vc-eval/scripts/patches/manual-scaling-v1.patch'
+
+      - name: Apply UI consolidation and five-view editor
+        shell: pwsh
+        run: |
+          & 'projects/chairplay-skoda-vc-eval/scripts/apply-ui-consolidation-v2.ps1' "$env:RUNNER_TEMP\ChairPlay" 'projects/chairplay-skoda-vc-eval/scripts/patches/ui-consolidation-v2.json'
+
+      - name: Apply Fast Smart Update v3 (unified vehicle view and real display descriptors)
+        shell: pwsh
+        run: |
+          & 'projects/chairplay-skoda-vc-eval/scripts/apply-smart-update-v3.ps1' "$env:RUNNER_TEMP\ChairPlay" 'projects/chairplay-skoda-vc-eval/scripts/patches/smart-update-v3.json'
+
+      - name: Apply audited ChairPlay UI v4 (fail closed if anything is missing)
+        shell: pwsh
+        run: |
+          python 'projects/chairplay-skoda-vc-eval/scripts/finalize-ui-v4.py' "$env:RUNNER_TEMP\ChairPlay"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Apply approved ChairPlay UX v5 (guarded post-v4 patch)
+        shell: pwsh
+        run: |
+          python 'projects/chairplay-skoda-vc-eval/scripts/finalize-ui-v5.py' "$env:RUNNER_TEMP\ChairPlay"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate offline Live Lab scenario and safety policy
+        shell: pwsh
+        run: |
+          Push-Location 'projects/chairplay-skoda-vc-eval/live-lab'
+          python -m unittest discover -v -p 'test_labctl.py'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python labctl.py check scenarios/p3-updateinfo70.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
+      - name: Integrate guarded Live Lab after the approved v5 UX patch
+        shell: pwsh
+        run: |
+          python 'projects/chairplay-skoda-vc-eval/live-lab/integrate_live_lab.py' "$env:RUNNER_TEMP\ChairPlay"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Prepare Vitest timeout
+        shell: pwsh
+        run: |
+          & 'projects/chairplay-skoda-vc-eval/scripts/prepare-webui-tests.ps1' "$env:RUNNER_TEMP\ChairPlay"
+
+      - name: Build jar and verify web UI and Kotlin tests compile
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/ChairPlay
+        run: |
+          .\gradlew.bat test jar --no-daemon --console=plain
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path 'build/libs/chairplay.jar')) { throw 'No jar produced' }
+
+      - name: Verify compiled Live Lab classes are included
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/ChairPlay
+        run: |
+          $names = & jar tf 'build/libs/chairplay.jar'
+          if (!($names | Select-String -Pattern 'livelab/LiveLabController.class' -SimpleMatch -Quiet)) { throw 'LIVE_LAB_CLASS_NOT_PACKAGED' }
+          if (!($names | Select-String -Pattern 'livelab/LiveLabGate.class' -SimpleMatch -Quiet)) { throw 'LIVE_LAB_GATE_NOT_PACKAGED' }
+          $labPatch = Get-Content 'src/main/kotlin/io/github/numberonebot/chairplay/ui/UiServer.kt' -Raw
+          if (!$labPatch.Contains('route !in setOf("live-lab", "screenshot") && !authorized(exchange)')) { throw 'LIVE_LAB_TOKEN_FREE_GATE_NOT_APPLIED' }
+          $uiPatch = Get-Content 'src/main/kotlin/io/github/numberonebot/chairplay/ui/ChairPlayUi.kt' -Raw
+          if (!$uiPatch.Contains('?: 18765, log = log')) { throw 'LIVE_LAB_FIXED_PORT_NOT_APPLIED' }
+          Write-Host 'LIVE_LAB_CLASSES=PASS'
+
+      - name: Verify the compiled UI includes the audited v4 and v5 markers
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem "$env:RUNNER_TEMP\ChairPlay\build\webui\resources\ui" -Recurse -Filter '*.js'
+          if (!$files) { throw 'Missing compiled WebUI JS' }
+          if (!(Select-String -Path $files.FullName -Pattern 'UI v4' -SimpleMatch -Quiet)) {
+            throw 'UI_V4_BUILD_MISMATCH: bundle does not contain audited UI v4; do not package'
+          }
+          if (!(Select-String -Path $files.FullName -Pattern 'Couple Controller' -SimpleMatch -Quiet)) { throw 'UI_V5_BUILD_MISMATCH: Coupling control absent' }
+          if (!(Select-String -Path $files.FullName -Pattern 'Assign to View' -SimpleMatch -Quiet)) { throw 'UI_V5_BUILD_MISMATCH: Single area selector absent' }
+          Write-Host 'UI_V4_V5_BUNDLE=PASS'
+
+      - name: Download successful full Windows build 44 as exact base
+        uses: actions/download-artifact@v4
+        with:
+          name: chairplay-skoda790-upstream-windows-x64
+          run-id: 41921067940
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/chairplay-base
+
+      - name: Package changed file only, with relative installation path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $baseZip = Get-ChildItem "$env:RUNNER_TEMP\chairplay-base" -Filter '*.zip' | Select-Object -First 1
+          if (!$baseZip) { throw 'Missing Build #44 ZIP' }
+          $baseDir = Join-Path $env:RUNNER_TEMP 'chairplay-base-extracted'
+          Expand-Archive -LiteralPath $baseZip.FullName -DestinationPath $baseDir -Force
+          $old = Join-Path $baseDir 'app\chairplay.jar'
+          if (!(Test-Path $old)) { throw 'Build #44 is missing app/chairplay.jar' }
+          $new = Join-Path $env:RUNNER_TEMP 'ChairPlay\build\libs\chairplay.jar'
+          $oldSha = (Get-FileHash -LiteralPath $old -Algorithm SHA256).Hash.ToLowerInvariant()
+          $newSha = (Get-FileHash -LiteralPath $new -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($oldSha -eq $newSha) { throw 'Unexpected: patched jar identical to Build #44' }
+          $patch = Join-Path $env:RUNNER_TEMP 'chairplay-jar-patch'
+          New-Item -ItemType Directory -Path (Join-Path $patch 'app') -Force | Out-Null
+          Copy-Item -LiteralPath $new -Destination (Join-Path $patch 'app\chairplay.jar')
+          Write-Host "BASE_JAR_SHA256=$oldSha"
+          Write-Host "PATCH_JAR_SHA256=$newSha"
+          Write-Host "UPDATE_INSTRUCTIONS=Close ChairPlay, back up app/chairplay.jar, then copy app/chairplay.jar from ZIP into folder containing ChairPlay.exe, overwriting the file."
+          $zip = 'ChairPlay-LiveLab-NoToken-Build44-JAR-Patch.zip'
+          Compress-Archive -Path (Join-Path $patch '*') -DestinationPath $zip -Force
+          Get-Item $zip | Select-Object Name, Length | Format-Table
+          Write-Host 'Archive contains only app/chairplay.jar (no installer scripts)'
+
+      - name: Upload manual replacement patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: chairplay-live-lab-notoken-build44-manual-patch
+          path: ChairPlay-LiveLab-NoToken-Build44-JAR-Patch.zip
+          retention-days: 14
+          if-no-files-found: error

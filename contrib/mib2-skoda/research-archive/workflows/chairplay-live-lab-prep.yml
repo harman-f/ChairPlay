@@ -1,0 +1,53 @@
+name: ChairPlay Live Lab preparation - offline safety gate
+
+on:
+  push:
+    branches: [work/chairplay-live-lab-prep-20261107]
+    paths:
+      - 'projects/chairplay-skoda-vc-eval/live-lab/**'
+      - '.github/workflows/chairplay-live-lab-prep.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chairplay-live-lab-prep-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-prep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run offline contract and CLI regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd projects/chairplay-skoda-vc-eval/live-lab
+          python -m unittest discover -v -p 'test_labctl.py'
+          python labctl.py check scenarios/p3-updateinfo70.json
+      - name: Run independent Kotlin session gate tests (no application build)
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v kotlinc
+          cd projects/chairplay-skoda-vc-eval/live-lab/staging
+          kotlinc LiveLabGate.kt LiveLabGateTest.kt -include-runtime -d /tmp/chairplay-live-lab-gate-test.jar
+          java -jar /tmp/chairplay-live-lab-gate-test.jar
+      - name: Check no existing Windows build/packaging paths were changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff-tree --no-commit-id --name-only -r HEAD | tee /tmp/change-list
+          if grep -Ev '^(projects/chairplay-skoda-vc-eval/live-lab/|\.github/workflows/chairplay-live-lab-prep\.yml)' /tmp/change-list; then
+            echo 'WARNING: latest commit includes paths outside Live Lab; investigate before merge'
+            exit 1
+          fi
+          echo 'PREP_ONLY=PASS — no ChairPlay binary or iPhone traffic'

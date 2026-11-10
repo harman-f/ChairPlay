@@ -1,0 +1,109 @@
+name: ChairPlay Skoda 790 Windows x64 build
+
+# Full Windows EXE/DLL baseline is manual-only. Normal iterations use the JAR Fast Smart Update.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out ChairPlay research and pinned revision
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            projects/chairplay-skoda-vc-eval
+          sparse-checkout-cone-mode: true
+          persist-credentials: false
+
+      - name: Install JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Clone pristine upstream feature branch at audited revision
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $revision = (Get-Content 'projects/chairplay-skoda-vc-eval/UPSTREAM_REVISION.txt' -Raw).Trim()
+          if ($revision -notmatch '^[0-9a-f]{40}$') { throw 'Invalid upstream revision' }
+          git clone --recurse-submodules --branch feature/skoda_790 https://github.com/zakklmv/ChairPlay.git "$env:RUNNER_TEMP\ChairPlay"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C "$env:RUNNER_TEMP\ChairPlay" checkout --detach $revision
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git -C "$env:RUNNER_TEMP\ChairPlay" submodule update --init --recursive
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $actual = (git -C "$env:RUNNER_TEMP\ChairPlay" rev-parse HEAD).Trim()
+          if ($actual -ne $revision) { throw "Upstream revision mismatch: $actual" }
+          Write-Host "PRISTINE_UPSTREAM=$actual (no Research source overrides)"
+
+      - name: Apply small, SHA-guarded live cluster URL fix to temporary upstream checkout
+        shell: pwsh
+        run: |
+          & "projects/chairplay-skoda-vc-eval/scripts/apply-live-profile-patch.ps1" "$env:RUNNER_TEMP\ChairPlay"
+
+      - name: Apply incremental native-size and Scaling UI patch
+        shell: pwsh
+        run: |
+          & "projects/chairplay-skoda-vc-eval/scripts/apply-manual-scaling-patch.ps1" "$env:RUNNER_TEMP\ChairPlay" "projects/chairplay-skoda-vc-eval/scripts/patches/manual-scaling-v1.patch"
+
+      - name: Allow slower Vitest cases on Windows CI (test harness only)
+        shell: pwsh
+        run: |
+          & "projects/chairplay-skoda-vc-eval/scripts/prepare-webui-tests.ps1" "$env:RUNNER_TEMP\ChairPlay"
+
+      - name: Run upstream JVM and web UI tests
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/ChairPlay
+        run: |
+          .\gradlew.bat test --no-daemon --console=plain
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build standalone upstream Windows executable
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/ChairPlay
+        run: |
+          .\gradlew.bat deploy --no-daemon --console=plain
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path 'build\jpackage\ChairPlay\ChairPlay.exe')) { throw 'Missing ChairPlay.exe' }
+
+      - name: Package upstream app and MU1440 safe-area profiles (no identities)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = Join-Path $env:RUNNER_TEMP 'ChairPlay\build\jpackage\ChairPlay'
+          $profiles = Join-Path $app 'profiles'
+          New-Item -ItemType Directory -Force -Path $profiles | Out-Null
+          Copy-Item 'projects\chairplay-skoda-vc-eval\profiles\*.json' $profiles -Force
+          $zip = 'ChairPlay-Skoda790-Upstream-Windows-x64.zip'
+          Compress-Archive -Path (Join-Path $app '*') -DestinationPath $zip -CompressionLevel Optimal -Force
+          if (-not (Test-Path $zip)) { throw 'Missing Windows build ZIP' }
+          Get-FileHash $zip -Algorithm SHA256 | Format-List
+
+      - name: Upload downloadable Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: chairplay-skoda790-upstream-windows-x64
+          path: ChairPlay-Skoda790-Upstream-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chairplay-skoda790-upstream-test-reports
+          path: |
+            ${{ runner.temp }}/ChairPlay/build/test-results/
+            ${{ runner.temp }}/ChairPlay/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14
